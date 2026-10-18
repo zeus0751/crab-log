@@ -1,5 +1,5 @@
 // Install-test service worker. Version must match APP_VERSION in index.html.
-const VERSION = 'smoke-0.1.0';
+const VERSION = 'smoke-0.2.0';
 const CACHE = 'smoke-cache-' + VERSION;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 

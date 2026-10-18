@@ -97,7 +97,7 @@
 </div>
 
 <script>
-const APP_VERSION = 'smoke-0.1.0';
+const APP_VERSION = 'smoke-0.2.0';
 const $ = (id) => document.getElementById(id);
 $('ver').textContent = APP_VERSION;
 
@@ -155,7 +155,7 @@ async function showRecs() {
   } catch (e) { $('recs').innerHTML = '<span class="bad">Database error: ' + e + '</span>'; }
 }
 $('addBtn').onclick = async () => {
-  try { await putRec({ saved: new Date().toString() + ' [' + Date.now() % 100000 + ']', online: navigator.onLine }); await showRecs(); }
+  try { await putRec({ saved: new Date().toString() + ' [' + Date.now() % 100000 + ']', online: navigator.onLine }); await showRecs(); prepShare(); }
   catch (e) { $('recs').innerHTML = '<span class="bad">Save failed: ' + e + '</span>'; }
 };
 $('clearBtn').onclick = async () => {
@@ -181,19 +181,29 @@ async function makeBackup() {
   const payload = { app: 'crab-log-install-test', version: APP_VERSION, created: new Date().toISOString(), count: recs.length, records: recs };
   return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
 }
-function stamp() { return new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16); }
+function stamp() { // local time (America/New_York on the tablet), not UTC
+  const d = new Date(), z = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes());
+}
+// Share: build the file ahead of time so navigator.share() runs directly inside the tap.
+let readyShare = null;
+async function prepShare() {
+  try { const blob = await makeBackup(); readyShare = new File([blob], 'install-test-backup-' + stamp() + '.json', { type: 'application/json' }); } catch (e) { readyShare = null; }
+}
+prepShare(); setInterval(prepShare, 15000);
 $('saveBtn').onclick = async () => {
   const blob = await makeBackup(); const name = 'install-test-backup-' + stamp() + '.json';
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   $('backup').textContent = 'Asked Chrome to save: ' + name + '\nCheck the Downloads folder (Files app) and tell me whether it appeared and where.';
 };
-$('shareBtn').onclick = async () => {
-  try {
-    const blob = await makeBackup(); const f = new File([blob], 'install-test-backup-' + stamp() + '.json', { type: 'application/json' });
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Install test backup' }); $('backup').textContent = 'Share sheet opened/closed.'; }
-    else $('backup').innerHTML = '<span class="bad">Sharing files is not supported here.</span>';
-  } catch (e) { $('backup').textContent = 'Share cancelled or failed: ' + e; }
+$('shareBtn').onclick = () => {
+  const f = readyShare;
+  if (!f) { $('backup').textContent = 'Backup not ready yet; wait a second and tap again.'; return; }
+  if (!(navigator.canShare && navigator.canShare({ files: [f] }))) { $('backup').innerHTML = '<span class="bad">Sharing files is not supported here.</span>'; return; }
+  navigator.share({ files: [f], title: 'Install test backup' })
+    .then(() => { $('backup').textContent = 'Share finished: ' + f.name; })
+    .catch((e) => { $('backup').textContent = 'Share cancelled or failed: ' + e.name + ' – ' + e.message; });
 };
 $('restoreFile').onchange = async (ev) => {
   const file = ev.target.files[0]; if (!file) return;
