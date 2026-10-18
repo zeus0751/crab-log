@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B3D91">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<title>Install Test</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --card:#f1f4f9; --pri:#0B3D91; --ok:#0a6b2d; --bad:#b00020; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:12px 16px 80px; font:18px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  h1 { font-size:24px; margin:4px 0; }
+  h2 { font-size:20px; margin:0 0 8px; }
+  .card { background:var(--card); border:2px solid #c9d2e0; border-radius:12px; padding:12px; margin:12px 0; }
+  button { min-height:64px; min-width:64px; font-size:20px; font-weight:700; padding:10px 18px; margin:6px 6px 6px 0;
+           border:3px solid var(--pri); background:var(--pri); color:#fff; border-radius:12px; }
+  button.alt { background:#fff; color:var(--pri); }
+  button:active { filter:brightness(.8); }
+  .big { min-height:110px; min-width:46%; font-size:28px; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#fff; border:1px solid #c9d2e0; border-radius:8px; padding:8px; font-size:16px; max-height:260px; overflow:auto; }
+  .ok { color:var(--ok); font-weight:700; } .bad { color:var(--bad); font-weight:700; }
+  #banner { position:sticky; top:0; z-index:5; padding:10px 12px; font-weight:700; border-radius:10px; margin-bottom:8px; }
+  #banner.on { background:#d9f2e0; color:var(--ok); } #banner.off { background:#ffe0b2; color:#7a3b00; }
+  #update { display:none; background:#fff3b0; border:3px solid #b58900; }
+  input[type=file] { font-size:18px; margin:6px 0; }
+</style>
+</head>
+<body>
+<div id="banner" class="on">Checking connection…</div>
+<h1>Crab Log – Install Test</h1>
+<p>Throwaway test page. It holds no crab data. Version <b id="ver"></b>.</p>
+
+<div class="card" id="update">
+  <h2>Update ready</h2>
+  <p>A newer version of this page was downloaded. It has <b>not</b> been applied yet.</p>
+  <button id="applyBtn">Apply update now</button>
+  <button class="alt" id="laterBtn">Not now</button>
+</div>
+
+<div class="card">
+  <h2>1. This device</h2>
+  <pre id="env">…</pre>
+  <button class="alt" id="envBtn">Refresh</button>
+</div>
+
+<div class="card">
+  <h2>2. Test records (saved on this tablet)</h2>
+  <p>Add a few, then close Chrome, restart the tablet, and check they are still here. Try it with Wi-Fi off.</p>
+  <button id="addBtn">Add test record</button>
+  <button class="alt" id="clearBtn">Delete all test records</button>
+  <pre id="recs">…</pre>
+</div>
+
+<div class="card">
+  <h2>3. Protect my data</h2>
+  <button id="persistBtn">Ask Chrome to keep my data</button>
+  <pre id="persist">Not asked yet.</pre>
+</div>
+
+<div class="card">
+  <h2>4. Backup file</h2>
+  <button id="saveBtn">Save backup file</button>
+  <button class="alt" id="shareBtn">Share backup…</button>
+  <p>Restore from a backup file:</p>
+  <input type="file" id="restoreFile" accept=".json,application/json">
+  <pre id="backup">No backup action yet.</pre>
+</div>
+
+<div class="card">
+  <h2>5. Keep screen on</h2>
+  <button id="wakeBtn">Keep screen on</button>
+  <button class="alt" id="wakeOff">Release</button>
+  <pre id="wake">Not started. Leave this page open ~10 minutes and see whether the screen stays on.</pre>
+</div>
+
+<div class="card">
+  <h2>6. Big buttons (try with gloves / wet hands)</h2>
+  <button class="big" data-t="A">A</button><button class="big alt" data-t="B">B</button>
+  <button class="big" data-t="C">C</button><button class="big alt" data-t="D">D</button>
+  <pre id="taps">Taps: 0. Missed or doubled taps will show here.</pre>
+  <button class="alt" id="tapReset">Reset</button>
+</div>
+
+<div class="card">
+  <h2>7. Tide download test (needs internet)</h2>
+  <p>Checks whether this page can fetch NOAA tide predictions, so tides could be pre-loaded at home.</p>
+  <button id="tideBtn">Fetch tides (both stations)</button>
+  <pre id="tide">Not run.</pre>
+</div>
+
+<div class="card">
+  <h2>8. Updates</h2>
+  <button id="updBtn">Check for update</button>
+  <pre id="upd">Not checked.</pre>
+</div>
+
+<script>
+const APP_VERSION = 'smoke-0.1.0';
+const $ = (id) => document.getElementById(id);
+$('ver').textContent = APP_VERSION;
+
+// ---------- connection banner ----------
+function conn() {
+  const on = navigator.onLine;
+  $('banner').className = on ? 'on' : 'off';
+  $('banner').textContent = on ? 'Online (browser reports a connection)' : 'OFFLINE – this is the mode we want to test';
+}
+addEventListener('online', conn); addEventListener('offline', conn); conn();
+
+// ---------- environment ----------
+async function env() {
+  const lines = [];
+  lines.push('Browser: ' + navigator.userAgent);
+  const m = navigator.userAgent.match(/Chrome\/([\d.]+)/);
+  lines.push('Chrome version: ' + (m ? m[1] : 'unknown'));
+  lines.push('Secure context (https): ' + window.isSecureContext);
+  lines.push('Running as installed app: ' + (matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'YES' : 'no (in a browser tab)'));
+  lines.push('Service worker: ' + ('serviceWorker' in navigator ? (navigator.serviceWorker.controller ? 'active and controlling this page' : 'supported, not controlling yet (reload once)') : 'NOT supported'));
+  lines.push('IndexedDB: ' + ('indexedDB' in window));
+  lines.push('Wake Lock: ' + ('wakeLock' in navigator));
+  lines.push('Web Share with files: ' + (!!navigator.canShare));
+  lines.push('Screen: ' + screen.width + 'x' + screen.height + ', window ' + innerWidth + 'x' + innerHeight + ', ratio ' + devicePixelRatio);
+  lines.push('Time zone: ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
+  lines.push('Local time: ' + new Date().toString());
+  if (navigator.storage && navigator.storage.estimate) {
+    const e = await navigator.storage.estimate();
+    lines.push('Storage used/quota: ' + Math.round((e.usage || 0) / 1024) + ' KB / ' + Math.round((e.quota || 0) / 1048576) + ' MB');
+  }
+  $('env').textContent = lines.join('\n');
+}
+$('envBtn').onclick = env; env();
+
+// ---------- IndexedDB ----------
+function db() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('smoke-test', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function allRecs() {
+  const d = await db();
+  return new Promise((res, rej) => { const q = d.transaction('records').objectStore('records').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+}
+async function putRec(rec) {
+  const d = await db();
+  return new Promise((res, rej) => { const t = d.transaction('records', 'readwrite'); t.objectStore('records').put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); });
+}
+async function showRecs() {
+  try {
+    const r = await allRecs();
+    $('recs').textContent = r.length ? r.length + ' record(s):\n' + r.map(x => '#' + x.id + '  ' + x.saved + '  (' + (x.online ? 'online' : 'OFFLINE') + ')').join('\n') : 'No test records.';
+  } catch (e) { $('recs').innerHTML = '<span class="bad">Database error: ' + e + '</span>'; }
+}
+$('addBtn').onclick = async () => {
+  try { await putRec({ saved: new Date().toString() + ' [' + Date.now() % 100000 + ']', online: navigator.onLine }); await showRecs(); }
+  catch (e) { $('recs').innerHTML = '<span class="bad">Save failed: ' + e + '</span>'; }
+};
+$('clearBtn').onclick = async () => {
+  if (!confirm('Delete all test records?')) return;
+  const d = await db();
+  d.transaction('records', 'readwrite').objectStore('records').clear().onsuccess = showRecs;
+};
+showRecs();
+
+// ---------- persistent storage ----------
+$('persistBtn').onclick = async () => {
+  if (!navigator.storage || !navigator.storage.persist) { $('persist').innerHTML = '<span class="bad">Not supported.</span>'; return; }
+  const before = await navigator.storage.persisted();
+  const granted = await navigator.storage.persist();
+  const after = await navigator.storage.persisted();
+  $('persist').textContent = 'Already persistent before asking: ' + before + '\nRequest granted: ' + granted + '\nPersistent now: ' + after +
+    '\n(If "false", installing the app and using it for a while can change this. Report what you see.)';
+};
+
+// ---------- backup / restore ----------
+async function makeBackup() {
+  const recs = await allRecs();
+  const payload = { app: 'crab-log-install-test', version: APP_VERSION, created: new Date().toISOString(), count: recs.length, records: recs };
+  return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+}
+function stamp() { return new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16); }
+$('saveBtn').onclick = async () => {
+  const blob = await makeBackup(); const name = 'install-test-backup-' + stamp() + '.json';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  $('backup').textContent = 'Asked Chrome to save: ' + name + '\nCheck the Downloads folder (Files app) and tell me whether it appeared and where.';
+};
+$('shareBtn').onclick = async () => {
+  try {
+    const blob = await makeBackup(); const f = new File([blob], 'install-test-backup-' + stamp() + '.json', { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Install test backup' }); $('backup').textContent = 'Share sheet opened/closed.'; }
+    else $('backup').innerHTML = '<span class="bad">Sharing files is not supported here.</span>';
+  } catch (e) { $('backup').textContent = 'Share cancelled or failed: ' + e; }
+};
+$('restoreFile').onchange = async (ev) => {
+  const file = ev.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== 'crab-log-install-test' || !Array.isArray(data.records)) throw new Error('Not an install-test backup file.');
+    const existing = await allRecs(); const have = new Set(existing.map(r => r.saved));
+    const fresh = data.records.filter(r => !have.has(r.saved));
+    const msg = 'File has ' + data.records.length + ' record(s); ' + (data.records.length - fresh.length) + ' already here; ' + fresh.length + ' would be added.\nAdd them?';
+    if (!confirm(msg)) { $('backup').textContent = 'Restore cancelled. Nothing changed.'; return; }
+    for (const r of fresh) { const c = { ...r }; delete c.id; await putRec(c); }
+    $('backup').textContent = 'Restore finished. Added ' + fresh.length + ', skipped ' + (data.records.length - fresh.length) + ' duplicate(s).';
+    await showRecs();
+  } catch (e) { $('backup').innerHTML = '<span class="bad">Restore failed: ' + e.message + '</span>'; }
+  ev.target.value = '';
+};
+
+// ---------- wake lock ----------
+let lock = null, wakeStart = 0;
+async function getLock() {
+  try {
+    lock = await navigator.wakeLock.request('screen'); wakeStart = wakeStart || Date.now();
+    $('wake').textContent = 'Screen lock ACTIVE since ' + new Date(wakeStart).toLocaleTimeString() + '. Leave the page open and untouched ~10 min.';
+    lock.addEventListener('release', () => { $('wake').textContent = 'Screen lock released at ' + new Date().toLocaleTimeString() + ' (' + Math.round((Date.now() - wakeStart) / 1000) + ' s).'; });
+  } catch (e) { $('wake').innerHTML = '<span class="bad">Wake lock failed: ' + e + '</span>'; }
+}
+$('wakeBtn').onclick = () => { wakeStart = 0; if ('wakeLock' in navigator) getLock(); else $('wake').innerHTML = '<span class="bad">Not supported.</span>'; };
+$('wakeOff').onclick = () => { wakeStart = 0; if (lock) lock.release(); };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && lock && lock.released && wakeStart) getLock(); });
+
+// ---------- big-button tap test ----------
+let taps = 0, last = {};
+document.querySelectorAll('.big').forEach(b => b.addEventListener('click', () => {
+  taps++; const k = b.dataset.t, now = Date.now(); const gap = last[k] ? now - last[k] : null; last[k] = now;
+  $('taps').textContent = 'Taps: ' + taps + '. Last: ' + k + (gap !== null && gap < 150 ? ' (double-fire, ' + gap + ' ms after previous!)' : '');
+}));
+$('tapReset').onclick = () => { taps = 0; last = {}; $('taps').textContent = 'Taps: 0.'; };
+
+// ---------- NOAA tide fetch (feasibility) ----------
+$('tideBtn').onclick = async () => {
+  const out = []; $('tide').textContent = 'Working…';
+  const d = new Date(); const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  for (const st of ['8559957', '8570255']) {
+    const url = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=crab_log_install_test&begin_date=' + ymd +
+      '&range=48&datum=MLLW&station=' + st + '&time_zone=lst_ldt&units=english&interval=hilo&format=json';
+    try {
+      const r = await fetch(url); const j = await r.json();
+      if (j.predictions) out.push(st + ': OK, ' + j.predictions.length + ' high/low points. First: ' + j.predictions[0].t + ' ' + j.predictions[0].type + ' ' + j.predictions[0].v + ' ft');
+      else out.push(st + ': reply had no predictions: ' + JSON.stringify(j).slice(0, 200));
+    } catch (e) { out.push(st + ': FAILED – ' + e + ' (blocked, offline, or not allowed from a web page)'); }
+  }
+  $('tide').textContent = out.join('\n');
+};
+
+// ---------- service worker + update handling ----------
+let reg = null;
+function offerUpdate(w) {
+  $('update').style.display = 'block';
+  $('applyBtn').onclick = () => w.postMessage('SKIP_WAITING');
+  $('laterBtn').onclick = () => { $('update').style.display = 'none'; };
+}
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then((r) => {
+    reg = r;
+    if (r.waiting && navigator.serviceWorker.controller) offerUpdate(r.waiting);
+    r.addEventListener('updatefound', () => {
+      const w = r.installing;
+      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w); });
+    });
+  }).catch((e) => { $('upd').innerHTML = '<span class="bad">Service worker failed: ' + e + '</span>'; });
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded) return; reloaded = true; location.reload(); });
+}
+$('updBtn').onclick = async () => {
+  if (!reg) { $('upd').textContent = 'No service worker registered.'; return; }
+  try {
+    await reg.update();
+    $('upd').textContent = 'Running version: ' + APP_VERSION + '\nChecked ' + new Date().toLocaleTimeString() + '. ' +
+      (reg.waiting ? 'A newer version is waiting – see the yellow box at the top.' : 'No newer version found.');
+  } catch (e) { $('upd').textContent = 'Update check failed (offline?): ' + e; }
+};
+</script>
+</body>
+</html>
