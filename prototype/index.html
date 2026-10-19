@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0B3D91">
 <link rel="manifest" href="manifest.webmanifest">
 <title>Crab Log Prototype</title>
@@ -33,6 +33,7 @@ input[type=text],textarea{-webkit-user-select:text;user-select:text;font:inherit
 .cols>div{flex:1;min-width:280px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:14px;z-index:9}
 .modal>div{background:#fff;border:4px solid #000;border-radius:14px;padding:14px;max-width:760px;width:100%}
+.stick{position:sticky;bottom:0;background:#fff;padding:8px 0;border-top:3px solid #000;margin-top:8px}
 .tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
 </style></head>
@@ -42,7 +43,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.4', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.5', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -206,7 +207,7 @@ SCREENS.spots=async()=>{
  return `<h1>Areas &amp; spots</h1><button class="sm" data-a="addArea">+ Add new area</button>`+areas.map(a=>`<div class="card"><b>${esc(a.name)}</b>${a.retired?' (retired)':''} ${a.placeholder?'<span class="mut">placeholder</span>':''}
   <button class="sm" data-a="editArea" data-id="${a.id}">Edit</button>
   ${locs.filter(l=>l.area_id===a.id).map(l=>`<div class="row"><span>${esc(l.name)}${l.needs_review?' <span class="mut">(to finish)</span>':''}${l.latitude!=null?' 📍':''}</span><button class="sm" data-a="editSpot" data-id="${l.id}">Edit</button>
-  ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<button data-a="go" data-s="home">Home</button>`};
+  ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}&z=17&t=k" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<button data-a="go" data-s="home">Home</button>`};
 
 /* ---------- dialogs ---------- */
 function modal(html){closeModal();const m=document.createElement('div');m.className='modal';m.id='modal';m.innerHTML=`<div>${html}</div>`;document.body.appendChild(m)}
@@ -216,20 +217,20 @@ function degDialog(cb,cur){PAD={fields:[{key:'deg',label:'Degrees (0–360)',val
  modal(`<h2>Heading in degrees (from chartplotter)</h2><div class="tm" id="degv">${cur??'___'}</div>${padHTML()}
  <button class="p big" data-a="degOk">OK</button> <button data-a="degClear">No degrees</button> <button data-a="closeM">Cancel</button>`);
  degDialog.cb=cb}
-function areaDialog(rec,cb){modal(`<h2>${rec?'Edit area':'New area'}</h2><label>Name</label><input type="text" id="an" value="${esc(rec?rec.name:'')}">
+function areaDialog(rec,cb){modal(`<h2>${rec?'Edit area':'New area'}</h2><label>Name</label><input type="text" enterkeyhint="done" id="an" value="${esc(rec?rec.name:'')}">
  ${rec?`<button class="${rec.retired?'sel':''}" data-a="toggleRetire" data-id="${rec.id}" data-st="areas">${rec.retired?'Retired (tap to restore)':'Retire area'}</button>`:''}
- <div><button class="p big" id="aok">Save</button> <button data-a="closeM">Cancel</button></div>`);
+ <div class="stick"><button class="p big" id="aok">Save</button> <button data-a="closeM">Cancel</button></div>`);
  document.getElementById('aok').onclick=async()=>{const n=document.getElementById('an').value.trim();if(!n){alert('Name needed');return}
   const dup=(await getAll('areas')).find(a=>a.name.toLowerCase()===n.toLowerCase()&&(!rec||a.id!==rec.id));if(dup){alert('That area name already exists');return}
   const r=await put('areas',{id:rec?rec.id:'AREA-'+Date.now().toString(36),name:n,placeholder:false});closeModal();cb&&cb(r)}}
 async function spotDialog(areaId,rec,cb){
  const siblings=(await getAll('locations')).filter(l=>l.area_id===areaId&&!l.deleted_at);
  let def='01';while(siblings.some(l=>l.name===def))def=pad2(+def+1);
- modal(`<h2>${rec?'Edit spot':'New spot in '+esc(await areaName(areaId))}</h2><label>Name</label><input type="text" id="sn" value="${esc(rec?rec.name:def)}">
- <label>Position from chartplotter (not shown on crab screens)</label><input type="text" id="sp" value="${esc(rec?rec.position_text||'':'')}" placeholder="Example: 38°36.738' N 075°06.274' W">
+ modal(`<h2>${rec?'Edit spot':'New spot in '+esc(await areaName(areaId))}</h2><label>Name</label><input type="text" enterkeyhint="done" id="sn" value="${esc(rec?rec.name:def)}">
+ <label>Position from chartplotter (not shown on crab screens)</label><input type="text" enterkeyhint="done" id="sp" value="${esc(rec?rec.position_text||'':'')}" placeholder="Example: 38°36.738' N 075°06.274' W">
  <div id="pc" class="mut"></div>
  <div class="row"><button class="${rec&&rec.needs_review?'sel':''}" id="nr">${!rec||rec.needs_review?'Mark: to finish later ✔':'Mark: to finish later'}</button></div>
- <div><button class="p big" id="sok">Save</button> <button data-a="closeM">Cancel</button></div>`);
+ <div class="stick"><button class="p big" id="sok">Save</button> <button data-a="closeM">Cancel</button></div>`);
  let nr=!rec||rec.needs_review;const nrb=document.getElementById('nr');nrb.onclick=()=>{nr=!nr;nrb.textContent=nr?'Mark: to finish later ✔':'Mark: to finish later'};
  const sp=document.getElementById('sp'),pc=document.getElementById('pc');
  const chk=()=>{const t=sp.value.trim();if(!t){pc.textContent='';return}const c=parseCoord(t);pc.textContent=c?`Read as ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`:'Could not read this position (it will still be saved as text).'};sp.oninput=chk;chk();
@@ -333,6 +334,7 @@ async function prepShare(){const b=document.getElementById('shareBtn');if(!b||!d
  if(navigator.canShare&&navigator.canShare({files:[shareFile]}))b.disabled=false}catch(e){}}
 setInterval(prepShare,15000);
 
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT')e.target.blur()});
 /* ---------- events ---------- */
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-a]');if(!t)return;const f=ACT[t.dataset.a];if(!f)return;
  try{const r=f(Object.assign(e,{dataset:t.dataset}));if(r&&r.then)await r;if(S.screen==='data'||t.dataset.a==='go')setTimeout(prepShare,300)}catch(err){alert('Error: '+err.message)}});
