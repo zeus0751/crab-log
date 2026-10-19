@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B3D91">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Crab Log Prototype</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:22px/1.35 system-ui,sans-serif;background:#fff;color:#000}
+#bar{padding:8px 14px;font-weight:700;font-size:18px;color:#fff;background:#0B3D91;display:flex;justify-content:space-between;gap:8px}
+#bar.off{background:#B35900}
+#saved{background:#0A6B2B;color:#fff;padding:6px 14px;font-weight:700;display:none}
+#app{padding:14px;max-width:1100px;margin:0 auto}
+h1{font-size:28px;margin:6px 0 10px}h2{font-size:23px;margin:14px 0 6px}
+button{font:inherit;font-weight:700;min-height:64px;min-width:64px;padding:8px 18px;margin:4px;border:3px solid #0B3D91;border-radius:12px;background:#fff;color:#0B3D91}
+button.p{background:#0B3D91;color:#fff}
+button.sel{background:#FFD400;color:#000;border-color:#000}
+button.danger{border-color:#B00020;color:#B00020}
+button.big{min-height:84px;font-size:26px}
+button.sm{min-height:48px;font-size:18px}
+.row{display:flex;flex-wrap:wrap;align-items:center}
+.card{border:3px solid #000;border-radius:12px;padding:10px 12px;margin:8px 0}
+.mut{color:#444;font-size:18px}
+.warn{background:#FFF3CD;border:2px solid #B35900;padding:8px 12px;border-radius:10px;margin:8px 0;font-size:19px}
+input[type=text],textarea{font:inherit;padding:10px;border:3px solid #000;border-radius:10px;width:100%;min-height:56px}
+.fld{border:4px solid #888;border-radius:12px;padding:6px 14px;min-width:150px;min-height:84px;margin:4px;text-align:center;background:#fff}
+.fld b{display:block;font-size:17px}.fld span{font-size:42px;font-weight:800}
+.fld.act{border-color:#0B3D91;background:#E3EDFF}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:460px}
+.pad button{min-height:78px;font-size:34px;margin:0}
+.cols{display:flex;gap:18px;flex-wrap:wrap}
+.cols>div{flex:1;min-width:280px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:14px;z-index:9}
+.modal>div{background:#fff;border:4px solid #000;border-radius:14px;padding:14px;max-width:760px;width:100%}
+.tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
+</style></head>
+<body>
+<div id="bar"><span id="net">Crab Log PROTOTYPE</span><span id="ver"></span></div>
+<div id="saved">Saved</div>
+<div id="app"></div>
+<script>
+'use strict';
+const APP_VERSION='proto-0.1.0', SCHEMA='proto-1', TZ='America/New_York';
+const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
+const DIRS=['N','NE','E','SE','S','SW','W','NW'];
+const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
+const PLACEHOLDER_AREAS=['Reedy Island','Mulberry Landing','Tuble Cove (RV Park)','Point of Ridge'];
+let db, S={screen:'home'}, deferredLoad=null;
+
+/* ---------- database ---------- */
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('crablog-proto',1);
+ r.onupgradeneeded=()=>{STORES.forEach(s=>r.result.createObjectStore(s,{keyPath:'id'}))};
+ r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function tx(store,mode,fn){return new Promise((res,rej)=>{const t=db.transaction(store,mode);let out;
+ t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);out=fn(t)})}
+const getAll=s=>new Promise((res,rej)=>{const q=db.transaction(s).objectStore(s).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
+const getOne=(s,id)=>new Promise((res,rej)=>{const q=db.transaction(s).objectStore(s).get(id);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
+function now(){const d=new Date(),p=n=>String(n).padStart(2,'0'),o=-d.getTimezoneOffset(),a=Math.abs(o);
+ return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} ${o<0?'-':'+'}${p(Math.floor(a/60))}:${p(a%60)} ${TZ}`}
+/* put with standard columns; edit_count increments on change, never silently overwrites history of edits */
+async function put(store,rec){const old=rec.id?await getOne(store,rec.id):null,t=now();
+ const full=Object.assign({},old||{created_at:t,edit_count:0,deleted_at:null},rec);
+ full.updated_at=t;full.schema_version=SCHEMA;if(old)full.edit_count=(old.edit_count||0)+1;
+ await tx(store,'readwrite',x=>x.objectStore(store).put(full));flashSaved();return full}
+function flashSaved(){const e=document.getElementById('saved');e.style.display='block';e.textContent='Saved '+now().slice(11,19);
+ clearTimeout(flashSaved.t);flashSaved.t=setTimeout(()=>e.style.display='none',2500)}
+const pad2=n=>String(n).padStart(2,'0');
+function today(){const d=new Date();return `${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}`}
+
+/* ---------- IDs: counters on the trip, never reused ---------- */
+async function nextTripId(){const all=await getAll('trips');const d=today();
+ const n=all.filter(t=>t.id.startsWith(d+'-')).length+1;return `${d}-${pad2(n)}`}
+async function nextChild(trip,kind,width){trip.counters=trip.counters||{};trip.counters[kind]=(trip.counters[kind]||0)+1;
+ await put('trips',{id:trip.id,counters:trip.counters});
+ return `${trip.id}-${kind}${String(trip.counters[kind]).padStart(width,'0')}`}
+
+/* ---------- coordinates and line path ---------- */
+function parseCoord(text){ // accepts decimal "38.6123 -75.1234" or degrees-minutes "38°36.738' N 075°06.274' W"
+ if(!text)return null;const t=text.trim();
+ let dec=t.match(/^\s*([+-]?\d+\.\d+)\s*[,\s]\s*([+-]?\d+\.\d+)\s*$/);
+ if(dec)return ok(+dec[1],+dec[2]);
+ const re=/(\d+)\s*[°\s]\s*(\d+(?:\.\d+)?)\s*['′]?\s*([NSEW])/gi;let m,v=[];
+ while((m=re.exec(t))){let x=+m[1]+(+m[2])/60;if(/[SW]/i.test(m[3]))x=-x;v.push(x)}
+ if(v.length===2)return ok(v[0],v[1]);return null;
+ function ok(a,b){return(Math.abs(a)<=90&&Math.abs(b)<=180)?{lat:a,lon:b}:null}}
+function linePath(spot,dep,lengthFt=600){ // end of line from spot position along heading (true north assumed; stored reference UNKNOWN)
+ if(!spot||spot.latitude==null)return null;
+ const th=dep.lay_heading_deg!=null?dep.lay_heading_deg:DEG[dep.lay_heading];if(th==null)return null;
+ const r=th*Math.PI/180,ftLat=364567;
+ return{lat:spot.latitude+lengthFt*Math.cos(r)/ftLat,lon:spot.longitude+lengthFt*Math.sin(r)/(ftLat*Math.cos(spot.latitude*Math.PI/180)),uncertain:dep.lay_heading_deg==null}}
+
+/* ---------- helpers ---------- */
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const app=()=>document.getElementById('app');
+function go(screen,extra){S=Object.assign({screen},extra||{});render()}
+async function openTrip(){const t=(await getAll('trips')).filter(x=>!x.deleted_at&&!x.ended_ts).sort((a,b)=>a.id<b.id?1:-1);return t[0]||null}
+async function areaName(id){const a=id&&await getOne('areas',id);return a?a.name:'(none)'}
+async function spotName(id){const a=id&&await getOne('locations',id);return a?a.name:'(not recorded)'}
+function padHTML(){return `<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-a="d" data-v="${n}">${n}</button>`).join('')}
+ <button data-a="bk">⌫</button><button data-a="d" data-v="0">0</button><button class="p" data-a="next">NEXT</button></div>`}
+
+/* ---------- numeric pad state (shared by count screen and degree entry) ---------- */
+let PAD=null; // {fields:[{key,label,val}], active:i, fresh:true, onChange}
+function padKey(act,v){if(!PAD)return;const f=PAD.fields[PAD.active];
+ if(act==='d'){if(PAD.fresh){f.val='';PAD.fresh=false}if(String(f.val).length<PAD.max)f.val=String(f.val)+v}
+ else if(act==='bk'){f.val=String(f.val).slice(0,-1);PAD.fresh=false}
+ else if(act==='next'){PAD.active=(PAD.active+1)%PAD.fields.length;PAD.fresh=true}
+ PAD.paint()}
+
+/* ---------- screens ---------- */
+async function render(){
+ const el=app();document.getElementById('ver').textContent=APP_VERSION;
+ const fn=SCREENS[S.screen];el.innerHTML=await fn()}
+const SCREENS={};
+
+SCREENS.home=async()=>{
+ const t=await openTrip();
+ return `<h1>Crab Log</h1>
+ ${t?`<div class="card"><b>Trip in progress: ${t.id}</b><br><button class="p big" data-a="go" data-s="hub">Resume trip</button></div>`:''}
+ <button class="p big" data-a="startTrip">Start trip</button>
+ <button class="big" data-a="go" data-s="data">Data &amp; backup</button>
+ <button class="big" data-a="go" data-s="spots">Areas &amp; spots</button>
+ <p class="mut">Prototype ${APP_VERSION}. Test data only; placeholder areas. Nothing here is sent anywhere.</p>`};
+
+/* --- Start trip --- */
+SCREENS.start=async()=>{
+ const D=S.draft,areas=(await getAll('areas')).filter(a=>!a.deleted_at&&!a.retired).sort((a,b)=>a.name<b.name?-1:1);
+ const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===D.area_id);
+ const line=async u=>{const L=D.lines[u];return `<div class="card"><h2>Line ${u}</h2>
+  <div class="row">${spots.map(s=>`<button class="${L.spot===s.id?'sel':''}" data-a="spotPick" data-u="${u}" data-id="${s.id}">${esc(s.name)}</button>`).join('')}
+  <button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>
+  ${dirPicker('D',u,L)}</div>`};
+ return `<h1>Start trip</h1><h2>Area</h2><div class="row">${areas.map(a=>`<button class="${D.area_id===a.id?'sel':''}" data-a="areaPick" data-id="${a.id}">${esc(a.name)}</button>`).join('')}
+  <button class="sm" data-a="addArea">+ Add new area</button></div>
+  ${D.area_id?await line('A')+await line('B'):'<p class="mut">Pick an area to choose spots.</p>'}
+  <div class="card row"><button class="${D.perLine?'sel':''}" data-a="perLineToggle">Count each line separately: ${D.perLine?'ON':'OFF'}</button></div>
+  <button class="p big" data-a="beginTrip" ${D.area_id?'':'disabled'}>Begin trip</button> <button data-a="go" data-s="home">Cancel</button>`};
+function dirPicker(prefix,u,L){return `<div class="row"><span class="mut">Direction:&nbsp;</span>${DIRS.map(d=>`<button class="sm ${L.dir===d&&L.deg==null?'sel':''}" data-a="dir" data-p="${prefix}" data-u="${u}" data-v="${d}">${d}</button>`).join('')}
+ <button class="sm ${L.deg!=null?'sel':''}" data-a="degEntry" data-p="${prefix}" data-u="${u}">° ${L.deg!=null?L.deg:'___'}</button>
+ <button class="sm ${L.dir==='UNKNOWN'?'sel':''}" data-a="dir" data-p="${prefix}" data-u="${u}" data-v="UNKNOWN">?</button></div>`}
+
+/* --- Hub --- */
+SCREENS.hub=async()=>{
+ const t=await openTrip();if(!t){S.screen='home';return SCREENS.home()}
+ const deps=(await getAll('deployments')).filter(d=>d.trip_id===t.id&&!d.deleted_at);
+ const loops=(await getAll('loops')).filter(l=>l.trip_id===t.id&&!l.deleted_at).sort((a,b)=>a.seq-b.seq);
+ let h=`<h1>Trip ${t.id}</h1><p class="mut">Count each line separately: ${t.count_per_line?'ON':'OFF'} · Loops: ${loops.length}</p>`;
+ for(const d of deps.filter(d=>!d.deploy_end_ts).sort((a,b)=>a.unit_label<b.unit_label?-1:1)){
+  const sp=d.location_id?await getOne('locations',d.location_id):null,lp=linePath(sp,d,600);
+  h+=`<div class="card"><b>Line ${d.unit_label}</b> — ${esc(await spotName(d.location_id))}, facing ${d.lay_heading_deg!=null?d.lay_heading_deg+'°':esc(d.lay_heading)}
+  ${lp?`<div class="mut">Calculated end (600 ft): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain?' (±22° compass-point uncertainty)':''}</div>`:`<div class="mut">No spot coordinates yet, so no line path.</div>`}</div>`}
+ h+=`<button class="p big" data-a="loopStart">Start loop</button> <button class="big" data-a="go" data-s="move">Move lines</button>
+  <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`;
+ if(loops.length){h+=`<h2>Loops so far</h2><table><tr><th>#</th><th>Time</th><th>Medium</th><th>Large</th></tr>`+loops.map(l=>`<tr><td>${l.seq}</td><td>${(l.end_ts||l.start_ts).slice(11,16)}</td><td>${l.medium_count??'—'}</td><td>${l.large_count??'—'}</td></tr>`).join('')+`</table>`}
+ return h};
+
+/* --- Loop timer then count pad --- */
+SCREENS.loopTimer=async()=>`<h1>Loop running</h1><div class="tm" id="tm">0:00</div>
+ <p class="mut">Started ${S.loop.start_ts.slice(11,16)}. Tap when the lines are up and you are ready to count.</p>
+ <button class="p big" data-a="linesUp">Lines up — count</button> <button class="danger" data-a="loopCancel">Cancel loop</button>`;
+function countFields(perLine){return perLine?[['A_M','Line A Medium'],['A_L','Line A Large'],['B_M','Line B Medium'],['B_L','Line B Large']]:[['M','Medium'],['L','Large']]}
+SCREENS.count=async()=>{
+ PAD=PAD||{fields:countFields(S.perLine).map(([k,l])=>({key:k,label:l,val:''})),active:0,fresh:true,max:3};
+ PAD.paint=paintCount;
+ return `<h1>Count — loop ${S.loop.seq}</h1><div class="cols"><div id="cf"></div><div>${padHTML()}</div></div>
+  <p class="mut">Empty = not counted. Typing 0 = counted zero.</p>
+  <button class="p big" data-a="saveLoop">Save loop</button> <button data-a="backToTimer">Back</button>`};
+function paintCount(){const c=document.getElementById('cf');if(!c)return;
+ c.innerHTML=`<div class="row">`+PAD.fields.map((f,i)=>`<div class="fld ${i===PAD.active?'act':''}" data-a="focus" data-i="${i}"><b>${f.label}</b><span>${f.val===''?'—':f.val}</span></div>`).join('')+`</div>`+
+ (S.perLine?`<p class="mut">Total: Medium ${sumF('_M')}, Large ${sumF('_L')}</p>`:'')}
+function sumF(sfx){let any=false,t=0;PAD.fields.filter(f=>f.key.endsWith(sfx)).forEach(f=>{if(f.val!==''){any=true;t+=+f.val}});return any?t:'—'}
+
+/* --- Move lines --- */
+SCREENS.move=async()=>{
+ const t=await openTrip(),M=S.mv||(S.mv={which:'A',area_id:null,spot:null,dir:null,deg:null,pickup:false});
+ const areas=(await getAll('areas')).filter(a=>!a.deleted_at&&!a.retired);
+ const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===(M.area_id));
+ return `<h1>Move lines</h1><div class="row">${['A','B','BOTH'].map(w=>`<button class="${M.which===w?'sel':''}" data-a="mvWhich" data-v="${w}">${w==='BOTH'?'Both lines':'Line '+w}</button>`).join('')}</div>
+ <h2>New area</h2><div class="row">${areas.map(a=>`<button class="${M.area_id===a.id?'sel':''}" data-a="mvArea" data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>
+ ${M.area_id?`<h2>New spot</h2><div class="row">${spots.map(s=>`<button class="${M.spot===s.id?'sel':''}" data-a="mvSpot" data-id="${s.id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="MV">+ Add new spot</button></div>`:''}
+ <div class="card">${dirPicker('M','',M)}</div>
+ <p class="mut">Moving first records a pick-up loop count for the lines being moved.</p>
+ <button class="p big" data-a="doMove" ${M.spot?'':'disabled'}>Pick up &amp; move</button> <button data-a="go" data-s="hub">Cancel</button>`};
+
+SCREENS.finish=async()=>{const t=await openTrip();return `<h1>Finish trip ${t.id}</h1>
+ <p>This ends the trip. Lines still down will be closed with reason TRIP_END. Final pick-up count is entered as a loop first (use Start loop, then Finish).</p>
+ <button class="p big" data-a="doFinish">Finish trip</button> <button data-a="go" data-s="hub">Back</button>`};
+
+/* --- Data & backup --- */
+SCREENS.data=async()=>{
+ const trips=(await getAll('trips')).filter(t=>!t.deleted_at).sort((a,b)=>a.id<b.id?1:-1);
+ const loops=await getAll('loops');
+ return `<h1>Data &amp; backup</h1>
+ <button class="p big" data-a="backup">Save backup file</button> <button class="big" id="shareBtn" data-a="shareBackup" disabled>Share backup</button>
+ <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
+ <div id="msg" class="warn" style="display:none"></div>
+ <h2>Trips (${trips.length})</h2><table><tr><th>Trip</th><th>Status</th><th>Loops</th></tr>${trips.map(t=>`<tr><td>${t.id}</td><td>${t.ended_ts?'finished':'open'}</td><td>${loops.filter(l=>l.trip_id===t.id&&!l.deleted_at).length}</td></tr>`).join('')}</table>
+ <button data-a="go" data-s="home">Home</button>`};
+
+/* --- Areas & spots --- */
+SCREENS.spots=async()=>{
+ const areas=(await getAll('areas')).filter(a=>!a.deleted_at).sort((a,b)=>a.name<b.name?-1:1),locs=(await getAll('locations')).filter(l=>!l.deleted_at);
+ return `<h1>Areas &amp; spots</h1><button class="sm" data-a="addArea">+ Add new area</button>`+areas.map(a=>`<div class="card"><b>${esc(a.name)}</b>${a.retired?' (retired)':''} ${a.placeholder?'<span class="mut">placeholder</span>':''}
+  <button class="sm" data-a="editArea" data-id="${a.id}">Edit</button>
+  ${locs.filter(l=>l.area_id===a.id).map(l=>`<div class="row"><span>${esc(l.name)}${l.needs_review?' <span class="mut">(to finish)</span>':''}${l.latitude!=null?' 📍':''}</span><button class="sm" data-a="editSpot" data-id="${l.id}">Edit</button>
+  ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<button data-a="go" data-s="home">Home</button>`};
+
+/* ---------- dialogs ---------- */
+function modal(html){closeModal();const m=document.createElement('div');m.className='modal';m.id='modal';m.innerHTML=`<div>${html}</div>`;document.body.appendChild(m)}
+function closeModal(){const m=document.getElementById('modal');if(m)m.remove()}
+function degDialog(cb,cur){PAD={fields:[{key:'deg',label:'Degrees (0–360)',val:cur==null?'':String(cur)}],active:0,fresh:true,max:3,
+ paint(){const e=document.getElementById('degv');if(e)e.textContent=PAD.fields[0].val||'___'}};
+ modal(`<h2>Heading in degrees (from chartplotter)</h2><div class="tm" id="degv">${cur??'___'}</div>${padHTML()}
+ <button class="p big" data-a="degOk">OK</button> <button data-a="degClear">No degrees</button> <button data-a="closeM">Cancel</button>`);
+ degDialog.cb=cb}
+function areaDialog(rec,cb){modal(`<h2>${rec?'Edit area':'New area'}</h2><label>Name</label><input type="text" id="an" value="${esc(rec?rec.name:'')}">
+ ${rec?`<button class="${rec.retired?'sel':''}" data-a="toggleRetire" data-id="${rec.id}" data-st="areas">${rec.retired?'Retired (tap to restore)':'Retire area'}</button>`:''}
+ <div><button class="p big" id="aok">Save</button> <button data-a="closeM">Cancel</button></div>`);
+ document.getElementById('aok').onclick=async()=>{const n=document.getElementById('an').value.trim();if(!n){alert('Name needed');return}
+  const dup=(await getAll('areas')).find(a=>a.name.toLowerCase()===n.toLowerCase()&&(!rec||a.id!==rec.id));if(dup){alert('That area name already exists');return}
+  const r=await put('areas',{id:rec?rec.id:'AREA-'+Date.now().toString(36),name:n,placeholder:false});closeModal();cb&&cb(r)}}
+async function spotDialog(areaId,rec,cb){
+ const siblings=(await getAll('locations')).filter(l=>l.area_id===areaId&&!l.deleted_at);
+ let def='01';while(siblings.some(l=>l.name===def))def=pad2(+def+1);
+ modal(`<h2>${rec?'Edit spot':'New spot in '+esc(await areaName(areaId))}</h2><label>Name</label><input type="text" id="sn" value="${esc(rec?rec.name:def)}">
+ <label>Position from chartplotter (not shown on crab screens)</label><input type="text" id="sp" value="${esc(rec?rec.position_text||'':'')}" placeholder="38°36.738' N 075°06.274' W   or   38.6123 -75.1034">
+ <div id="pc" class="mut"></div>
+ <div class="row"><button class="${rec&&rec.needs_review?'sel':''}" id="nr">${!rec||rec.needs_review?'Mark: to finish later ✔':'Mark: to finish later'}</button></div>
+ <div><button class="p big" id="sok">Save</button> <button data-a="closeM">Cancel</button></div>`);
+ let nr=!rec||rec.needs_review;const nrb=document.getElementById('nr');nrb.onclick=()=>{nr=!nr;nrb.textContent=nr?'Mark: to finish later ✔':'Mark: to finish later'};
+ const sp=document.getElementById('sp'),pc=document.getElementById('pc');
+ const chk=()=>{const t=sp.value.trim();if(!t){pc.textContent='';return}const c=parseCoord(t);pc.textContent=c?`Read as ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`:'Could not read this position (it will still be saved as text).'};sp.oninput=chk;chk();
+ document.getElementById('sok').onclick=async()=>{const n=document.getElementById('sn').value.trim();if(!n){alert('Name needed');return}
+  if(siblings.some(l=>l.name.toLowerCase()===n.toLowerCase()&&(!rec||l.id!==rec.id))){alert('That spot name already exists in this area');return}
+  const t=sp.value.trim(),c=parseCoord(t);
+  const r=await put('locations',{id:rec?rec.id:'LOC-'+Date.now().toString(36),area_id:areaId,name:n,position_text:t||null,latitude:c?c.lat:null,longitude:c?c.lon:null,
+   coordinate_basis:c?'CHARTPLOTTER':null,needs_review:nr&&true,created_on_trip_id:rec?rec.created_on_trip_id:(S.tripId||null)});
+  closeModal();cb&&cb(r)}}
+
+/* ---------- actions ---------- */
+const ACT={
+ async go(e){PAD=null;go(e.dataset.s)},
+ closeM(){closeModal()},
+ async startTrip(){PAD=null;const a=(await getAll('areas')).filter(x=>!x.retired&&!x.deleted_at);
+  go('start',{draft:{area_id:a.length===1?a[0].id:null,lines:{A:{spot:null,dir:null,deg:null},B:{spot:null,dir:null,deg:null}},perLine:false}})},
+ async areaPick(e){S.draft.area_id=e.dataset.id;S.draft.lines.A.spot=S.draft.lines.B.spot=null;render()},
+ spotPick(e){S.draft.lines[e.dataset.u].spot=e.dataset.id;render()},
+ perLineToggle(){S.draft.perLine=!S.draft.perLine;render()},
+ dir(e){const L=e.dataset.p==='D'?S.draft.lines[e.dataset.u]:S.mv;L.dir=e.dataset.v;L.deg=null;render()},
+ degEntry(e){const L=e.dataset.p==='D'?S.draft.lines[e.dataset.u]:S.mv;
+  degDialog(v=>{L.deg=v;if(v!=null)L.dir=nearest(v);render()},L.deg)},
+ degOk(){const v=PAD.fields[0].val;if(v===''){closeModal();return}const n=+v;if(n>360){alert('Degrees must be 0 to 360');return}closeModal();degDialog.cb(n%360)},
+ degClear(){closeModal();degDialog.cb(null)},
+ addArea(){areaDialog(null,async r=>{if(S.screen==='start')S.draft.area_id=r.id;render()})},
+ async addSpot(e){const u=e.dataset.u,aid=u==='MV'?S.mv.area_id:S.draft.area_id;
+  spotDialog(aid,null,r=>{if(u==='MV')S.mv.spot=r.id;else S.draft.lines[u].spot=r.id;render()})},
+ async editArea(e){areaDialog(await getOne('areas',e.dataset.id),()=>render())},
+ async editSpot(e){const l=await getOne('locations',e.dataset.id);spotDialog(l.area_id,l,()=>render())},
+ async toggleRetire(e){const r=await getOne(e.dataset.st,e.dataset.id);await put(e.dataset.st,{id:r.id,retired:!r.retired});closeModal();render()},
+ async beginTrip(){const D=S.draft,id=await nextTripId(),t0=now();
+  let trip=await put('trips',{id,trip_date:t0.slice(0,10),start_ts:t0,ended_ts:null,count_per_line:D.perLine,counters:{}});
+  S.tripId=id;
+  const stayId=await nextChild(trip,'S',2);trip=await getOne('trips',id);
+  await put('stays',{id:stayId,trip_id:id,area_id:D.area_id,arrive_ts:t0,depart_ts:null});
+  for(const u of ['A','B']){const L=D.lines[u],did=await nextChild(await getOne('trips',id),'D',2);
+   await put('deployments',{id:did,trip_id:id,stay_id:stayId,unit_label:u,equipment_type:'TROTLINE',location_id:L.spot,lay_heading:L.dir,lay_heading_deg:L.deg,
+    heading_reference:'UNKNOWN',deploy_start_ts:t0,deploy_end_ts:null,end_reason:null,moved_to_deployment_id:null})}
+  go('hub')},
+ async loopStart(){const t=await openTrip(),lid=await nextChild(t,'L',2);const loops=(await getAll('loops')).filter(l=>l.trip_id===t.id);
+  S={screen:'loopTimer',tripId:t.id,perLine:t.count_per_line,loop:{id:lid,seq:Math.max(0,...loops.map(l=>l.seq))+1,start_ts:now(),t0:Date.now(),type:'RUN'}};PAD=null;
+  S.timer=setInterval(()=>{const e=document.getElementById('tm');if(!e){clearInterval(S.timer);return}const s=Math.floor((Date.now()-S.loop.t0)/1000);e.textContent=Math.floor(s/60)+':'+pad2(s%60)},1000);
+  render()},
+ loopCancel(){clearInterval(S.timer);go('hub')},
+ async linesUp(){clearInterval(S.timer);S.loop.end_ts=now();PAD=null;S.screen='count';render();setTimeout(()=>PAD&&PAD.paint(),0)},
+ backToTimer(){go('hub')},
+ focus(e){PAD.active=+e.dataset.i;PAD.fresh=true;PAD.paint()},
+ d(e){padKey('d',e.dataset.v)},bk(){padKey('bk')},next(){padKey('next')},
+ async saveLoop(){const L=S.loop,F=Object.fromEntries(PAD.fields.map(f=>[f.key,f.val===''?null:+f.val]));
+  const tripId=S.tripId,deps=(await getAll('deployments')).filter(d=>d.trip_id===tripId&&!d.deploy_end_ts&&!d.deleted_at).sort((a,b)=>a.unit_label<b.unit_label?-1:1);
+  let m,l;
+  if(S.perLine){const mv=['A_M','B_M'].map(k=>F[k]),lv=['A_L','B_L'].map(k=>F[k]);m=mv.every(x=>x==null)?null:mv.reduce((a,b)=>a+(b||0),0);l=lv.every(x=>x==null)?null:lv.reduce((a,b)=>a+(b||0),0)}
+  else{m=F.M;l=F.L}
+  if(m==null&&l==null&&!confirm('No counts entered. Save this loop as NOT COUNTED?'))return;
+  const trip=await getOne('trips',tripId),stay=(await getAll('stays')).filter(s=>s.trip_id===tripId&&!s.depart_ts)[0];
+  await put('loops',{id:L.id,trip_id:tripId,stay_id:stay&&stay.id,seq:L.seq,loop_type:L.type,start_ts:L.start_ts,end_ts:L.end_ts,medium_count:m,large_count:l,count_status:(m==null&&l==null)?'NOT_COUNTED':'COUNTED'});
+  if(S.perLine)for(const d of deps){await put('loop_unit_counts',{id:L.id+'-'+d.unit_label,loop_id:L.id,trip_id:tripId,deployment_id:d.id,unit_label:d.unit_label,medium_count:F[d.unit_label+'_M'],large_count:F[d.unit_label+'_L']})}
+  PAD=null;go('hub')},
+ mvWhich(e){S.mv.which=e.dataset.v;render()},
+ mvArea(e){S.mv.area_id=e.dataset.id;S.mv.spot=null;render()},
+ mvSpot(e){S.mv.spot=e.dataset.id;render()},
+ async doMove(){const M=S.mv,t=await openTrip(),t0=now();
+  const deps=(await getAll('deployments')).filter(d=>d.trip_id===t.id&&!d.deploy_end_ts&&!d.deleted_at);
+  const moving=deps.filter(d=>M.which==='BOTH'||d.unit_label===M.which);
+  if(!confirm(`Move ${moving.map(d=>'Line '+d.unit_label).join(' and ')} to the new spot? The old placements stay in the record.`))return;
+  const stays=(await getAll('stays')).filter(s=>s.trip_id===t.id&&!s.depart_ts),cur=stays[0];
+  let stayId=cur.id;
+  if(cur.area_id!==M.area_id){await put('stays',{id:cur.id,depart_ts:t0});stayId=await nextChild(await getOne('trips',t.id),'S',2);await put('stays',{id:stayId,trip_id:t.id,area_id:M.area_id,arrive_ts:t0,depart_ts:null})}
+  for(const d of moving){const nid=await nextChild(await getOne('trips',t.id),'D',2);
+   await put('deployments',{id:d.id,deploy_end_ts:t0,end_reason:'MOVED',moved_to_deployment_id:nid});
+   await put('deployments',{id:nid,trip_id:t.id,stay_id:stayId,unit_label:d.unit_label,equipment_type:d.equipment_type,location_id:M.spot,lay_heading:M.dir,lay_heading_deg:M.deg,heading_reference:'UNKNOWN',deploy_start_ts:t0,deploy_end_ts:null,end_reason:null,moved_to_deployment_id:null})}
+  S.mv=null;go('hub')},
+ async doFinish(){const t=await openTrip(),t0=now();
+  if(!confirm('Finish this trip?'))return;
+  for(const d of (await getAll('deployments')).filter(d=>d.trip_id===t.id&&!d.deploy_end_ts))await put('deployments',{id:d.id,deploy_end_ts:t0,end_reason:'TRIP_END'});
+  for(const s of (await getAll('stays')).filter(s=>s.trip_id===t.id&&!s.depart_ts))await put('stays',{id:s.id,depart_ts:t0});
+  await put('trips',{id:t.id,ended_ts:t0});go('data')},
+ async backup(){const {blob,name}=await makeBackup();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);msg('Backup saved to Downloads as '+name+' ('+blob.size+' bytes)')},
+ shareBackup(){if(!shareFile)return;navigator.share({files:[shareFile],title:shareFile.name}).catch(err=>msg('Share cancelled or failed: '+err.name+' : '+err.message))},
+ restorePick(){const f=document.getElementById('rf');f.value='';f.onchange=()=>f.files[0]&&restoreFile(f.files[0]);f.click()}
+};
+function nearest(deg){return DIRS[Math.round(deg/45)%8]}
+function msg(t){const m=document.getElementById('msg');if(m){m.style.display='block';m.textContent=t}}
+
+/* ---------- backup / restore ---------- */
+const DATA_STORES=STORES.filter(s=>s!=='meta');
+async function makeBackup(){const data={};let n=0;for(const s of DATA_STORES){data[s]=await getAll(s);n+=data[s].length}
+ const d=new Date(),name=`crab-proto-backup-${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}.json`;
+ return{blob:new Blob([JSON.stringify({app:'crab-log-prototype',version:APP_VERSION,schema:SCHEMA,created:now(),counts:Object.fromEntries(DATA_STORES.map(s=>[s,data[s].length])),data},null,1)],{type:'application/json'}),name}}
+async function restoreFile(file){let j;try{j=JSON.parse(await file.text())}catch(e){msg('That file could not be read as a backup.');return}
+ if(j.app!=='crab-log-prototype'||!j.data){msg('This is not a Crab Log prototype backup.');return}
+ const add={},dup={};let na=0,nd=0;
+ for(const s of DATA_STORES){const have=new Set((await getAll(s)).map(r=>r.id));add[s]=[];dup[s]=0;for(const r of (j.data[s]||[])){if(have.has(r.id))dup[s]++;else add[s].push(r)}na+=add[s].length;nd+=dup[s]}
+ const total=na+nd;
+ if(!confirm(`File has ${total} records: ${nd} already here; ${na} would be added. Existing records are never overwritten. Add them?`))return;
+ for(const s of DATA_STORES)for(const r of add[s])await tx(s,'readwrite',x=>x.objectStore(s).put(r));
+ flashSaved();msg(`Restore done: ${na} added, ${nd} skipped (already present).`);
+}
+let shareFile=null;
+async function prepShare(){const b=document.getElementById('shareBtn');if(!b||!db)return;try{const {blob,name}=await makeBackup();shareFile=new File([blob],name,{type:'application/json'});
+ if(navigator.canShare&&navigator.canShare({files:[shareFile]}))b.disabled=false}catch(e){}}
+setInterval(prepShare,15000);
+
+/* ---------- events ---------- */
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-a]');if(!t)return;const f=ACT[t.dataset.a];if(!f)return;
+ try{const r=f(Object.assign(e,{dataset:t.dataset}));if(r&&r.then)await r;if(S.screen==='data'||t.dataset.a==='go')setTimeout(prepShare,300)}catch(err){alert('Error: '+err.message)}});
+function netBar(){const b=document.getElementById('bar');/* informational only; online status is not relied on */b.classList.toggle('off',!navigator.onLine)}
+addEventListener('online',netBar);addEventListener('offline',netBar);
+
+/* ---------- screen awake ---------- */
+let lock=null;async function getLock(){try{if('wakeLock' in navigator&&document.visibilityState==='visible')lock=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.wantLock)getLock()});
+document.addEventListener('pointerdown',()=>{if(!S.wantLock){S.wantLock=true;getLock()}},{once:true});
+
+/* ---------- service worker with confirm-before-update ---------- */
+function offerUpdate(w){const d=document.createElement('div');d.className='warn';d.innerHTML='A new version is ready. <button class="p sm" id="upd">Apply update</button>';
+ document.body.insertBefore(d,document.getElementById('app'));document.getElementById('upd').onclick=()=>w.postMessage('SKIP_WAITING')}
+if('serviceWorker' in navigator){addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').then(reg=>{
+ if(reg.waiting&&navigator.serviceWorker.controller)offerUpdate(reg.waiting);
+ reg.addEventListener('updatefound',()=>{const w=reg.installing;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)offerUpdate(w)})})});
+ let reloaded=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded)return;reloaded=true;location.reload()})})}
+
+/* ---------- start ---------- */
+(async()=>{db=await openDB();
+ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+ if(!(await getAll('areas')).length)for(const n of PLACEHOLDER_AREAS)await put('areas',{id:'AREA-'+n.replace(/\W+/g,'').toLowerCase(),name:n,placeholder:true,tide_station_id:null});
+ netBar();render()})();
+</script></body></html>
