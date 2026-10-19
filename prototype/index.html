@@ -38,6 +38,9 @@ input[type=text],textarea{-webkit-user-select:text;user-select:text;font:inherit
 .g-f{grid-area:f}.g-p{grid-area:p}.g-p .pad{height:100%;grid-template-rows:repeat(4,1fr)}.g-b{grid-area:b;align-self:end}
 @media (max-aspect-ratio:1/1){.cnt{grid-template-columns:1fr;grid-template-areas:"f" "p" "b"}}
 .topbar{margin:0 0 6px}
+.dg{display:grid;grid-template-columns:1fr minmax(260px,420px);gap:14px;align-items:start}
+.dg-p .pad button{min-height:68px}
+@media (max-aspect-ratio:1/1){.dg{grid-template-columns:1fr}}
 .tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
 </style></head>
@@ -47,7 +50,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.9', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.10', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -219,9 +222,8 @@ function modal(html){closeModal();const m=document.createElement('div');m.classN
 function closeModal(){const m=document.getElementById('modal');if(m)m.remove()}
 function degDialog(cb,cur){PAD={fields:[{key:'deg',label:'Degrees (0–360)',val:cur==null?'':String(cur)}],active:0,fresh:true,max:3,
  paint(){const e=document.getElementById('degv');if(e)e.textContent=PAD.fields[0].val||'___'}};
- modal(`<h2>Heading in degrees (from chartplotter)</h2><div class="tm" id="degv">${cur??'___'}</div>${padHTML()}
- <button class="p big" data-a="degOk">OK</button> <button data-a="degClear">No degrees</button> <button data-a="closeM">Cancel</button>`);
- degDialog.cb=cb}
+ modal(`<div class="dg"><div class="dg-l"><h2 style="margin:0">Heading in degrees (from chartplotter)</h2><div class="tm" id="degv" style="margin:6px 0">${cur??'___'}</div>
+ <button class="p big" data-a="degOk">OK</button> <button data-a="degClear">No degrees</button> <button data-a="closeM">Cancel</button></div><div class="dg-p">${padHTML()}</div></div>`); degDialog.cb=cb}
 function areaDialog(rec,cb){modal(`<h2>${rec?'Edit area':'New area'}</h2><label>Name</label><input type="text" enterkeyhint="done" id="an" value="${esc(rec?rec.name:'')}">
  ${rec?`<button class="${rec.retired?'sel':''}" data-a="toggleRetire" data-id="${rec.id}" data-st="areas">${rec.retired?'Retired (tap to restore)':'Retire area'}</button>`:''}
  <div class="stick"><button class="p big" id="aok">Save</button> <button data-a="closeM">Cancel</button></div>`);
