@@ -47,7 +47,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.8', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.9', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -193,7 +193,7 @@ SCREENS.move=async()=>{
 
 SCREENS.finish=async()=>{const t=await openTrip();return `<h1>Finish trip ${t.id}</h1>
  <p>This ends the trip. Lines still down will be closed with reason TRIP_END. Final pick-up count is entered as a loop first (use Start loop, then Finish).</p>
- <!--ACT--><button class="p big" data-a="doFinish">Finish trip</button> <button data-a="go" data-s="hub">Back</button><!--/ACT-->`};
+ <button class="p big" data-a="doFinish">Finish trip</button> <button data-a="go" data-s="hub">Back</button>`};
 
 /* --- Data & backup --- */
 SCREENS.data=async()=>{
