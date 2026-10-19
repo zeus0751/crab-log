@@ -34,6 +34,9 @@ input[type=text],textarea{-webkit-user-select:text;user-select:text;font:inherit
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:14px;z-index:9}
 .modal>div{background:#fff;border:4px solid #000;border-radius:14px;padding:14px;max-width:760px;width:100%}
 .stick{padding:8px 0;margin-top:8px}
+.cnt{display:grid;grid-template-columns:1fr minmax(280px,460px);grid-template-areas:"f p" "b p";gap:8px 18px;align-items:stretch}
+.g-f{grid-area:f}.g-p{grid-area:p}.g-p .pad{height:100%;grid-template-rows:repeat(4,1fr)}.g-b{grid-area:b;align-self:end}
+@media (max-aspect-ratio:1/1){.cnt{grid-template-columns:1fr;grid-template-areas:"f" "p" "b"}}
 .tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
 </style></head>
@@ -43,7 +46,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.6', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.7', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -160,14 +163,13 @@ SCREENS.hub=async()=>{
 /* --- Loop timer then count pad --- */
 SCREENS.loopTimer=async()=>`<h1>Loop running</h1><div class="tm" id="tm">0:00</div>
  <p class="mut">Started ${S.loop.start_ts.slice(11,16)}. Tap when the lines are up and you are ready to count.</p>
- <button class="p big" data-a="linesUp">Lines up — count</button> <button class="danger" data-a="loopCancel">Cancel loop</button>`;
+ <button class="p big" data-a="linesUp">End of Loop Count</button> <button class="danger" data-a="loopCancel">Cancel loop</button>`;
 function countFields(perLine){return perLine?[['A_M','Line A Medium'],['A_L','Line A Large'],['B_M','Line B Medium'],['B_L','Line B Large']]:[['M','Medium'],['L','Large']]}
 SCREENS.count=async()=>{
  PAD=PAD||{fields:countFields(S.perLine).map(([k,l])=>({key:k,label:l,val:''})),active:0,fresh:true,max:3};
  PAD.paint=paintCount;
- return `<h1>Count — loop ${S.loop.seq}</h1><div class="cols"><div id="cf"></div><div>${padHTML()}</div></div>
-  <p class="mut">Empty = not counted. Typing 0 = counted zero.</p>
-  <button class="p big" data-a="saveLoop">Save loop</button> <button data-a="backToTimer">Back</button>`};
+ return `<h1 style="margin:2px 0 6px">Count — loop ${S.loop.seq}</h1><div class="cnt"><div id="cf" class="g-f"></div><div class="g-p">${padHTML()}</div>
+  <div class="g-b"><p class="mut" style="margin:0 0 4px">Empty = not counted. Typing 0 = counted zero.</p><button class="p big" data-a="saveLoop">Save loop</button> <button class="big" data-a="backToTimer">Back</button></div></div>`};
 function paintCount(){const c=document.getElementById('cf');if(!c)return;
  c.innerHTML=`<div class="row">`+PAD.fields.map((f,i)=>`<div class="fld ${i===PAD.active?'act':''}" data-a="focus" data-i="${i}"><b>${f.label}</b><span>${f.val===''?'—':f.val}</span></div>`).join('')+`</div>`+
  (S.perLine?`<p class="mut">Total: Medium ${sumF('_M')}, Large ${sumF('_L')}</p>`:'')}
