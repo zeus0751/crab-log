@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Crab Log update helper</title>
+<style>body{font:22px/1.4 system-ui,sans-serif;margin:0;padding:18px;max-width:760px}button,a.b{display:inline-block;font:inherit;font-weight:700;min-height:64px;padding:14px 22px;margin:8px 0;border:3px solid #0B3D91;border-radius:12px;background:#0B3D91;color:#fff;text-decoration:none}
+pre{background:#eee;padding:10px;white-space:pre-wrap;font-size:18px}</style></head><body>
+<h1>Update helper</h1>
+<p>This clears the app's old program copy so the newest version loads. <b>It does not touch your saved trips, spots or backups.</b></p>
+<button id="go">Refresh the app program</button>
+<pre id="log"></pre>
+<a class="b" id="open" href="./" style="display:none">Open the app</a>
+<script>
+const log=t=>document.getElementById('log').textContent+=t+'\n';
+document.getElementById('go').onclick=async()=>{
+ try{
+  const regs=await navigator.serviceWorker.getRegistrations();
+  for(const r of regs){const ok=await r.unregister();log('Removed old program worker: '+ok)}
+  const keys=await caches.keys();
+  for(const k of keys){if(k.startsWith('proto-cache-')){await caches.delete(k);log('Cleared '+k)}}
+  log('Done. Saved data was not touched.');
+  document.getElementById('open').style.display='inline-block';
+ }catch(e){log('Problem: '+e.message)}
+};
+</script></body></html>
