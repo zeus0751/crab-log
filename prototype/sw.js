@@ -1,7 +1,7 @@
 // Prototype service worker. Version must match APP_VERSION in index.html.
-const VERSION = 'proto-0.1.0';
+const VERSION = 'proto-0.1.1';
 const CACHE = 'proto-cache-' + VERSION;
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/logo-160.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
