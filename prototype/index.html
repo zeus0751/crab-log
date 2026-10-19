@@ -37,6 +37,7 @@ input[type=text],textarea{-webkit-user-select:text;user-select:text;font:inherit
 .cnt{display:grid;grid-template-columns:1fr minmax(280px,460px);grid-template-areas:"f p" "b p";gap:8px 18px;align-items:stretch}
 .g-f{grid-area:f}.g-p{grid-area:p}.g-p .pad{height:100%;grid-template-rows:repeat(4,1fr)}.g-b{grid-area:b;align-self:end}
 @media (max-aspect-ratio:1/1){.cnt{grid-template-columns:1fr;grid-template-areas:"f" "p" "b"}}
+.topbar{margin:0 0 6px}
 .tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
 </style></head>
@@ -46,7 +47,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.7', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.8', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -116,7 +117,9 @@ function padKey(act,v){if(!PAD)return;const f=PAD.fields[PAD.active];
 /* ---------- screens ---------- */
 async function render(){
  const el=app();document.getElementById('ver').textContent=APP_VERSION;
- const fn=SCREENS[S.screen];el.innerHTML=await fn()}
+ const fn=SCREENS[S.screen];let h=await fn();const m=h.match(/<!--ACT-->([\s\S]*?)<!--\/ACT-->/);
+ if(m){const i=h.indexOf('</h1>');if(i>=0)h=h.slice(0,i+5)+'<div class="topbar">'+m[1]+'</div>'+h.slice(i+5)}
+ el.innerHTML=h}
 const SCREENS={};
 
 SCREENS.home=async()=>{
@@ -140,7 +143,7 @@ SCREENS.start=async()=>{
   <button class="sm" data-a="addArea">+ Add new area</button></div>
   ${D.area_id?await line('A')+await line('B'):'<p class="mut">Pick an area to choose spots.</p>'}
   <div class="card row"><button class="${D.perLine?'sel':''}" data-a="perLineToggle">Count each line separately: ${D.perLine?'ON':'OFF'}</button></div>
-  <button class="p big" data-a="beginTrip" ${D.area_id?'':'disabled'}>Begin trip</button> <button data-a="go" data-s="home">Cancel</button>`};
+  <!--ACT--><button class="p big" data-a="beginTrip" ${D.area_id?'':'disabled'}>Begin trip</button> <button data-a="go" data-s="home">Cancel</button><!--/ACT-->`};
 function dirPicker(prefix,u,L){return `<div class="row"><span class="mut">Direction:&nbsp;</span>${DIRS.map(d=>`<button class="sm ${L.dir===d&&L.deg==null?'sel':''}" data-a="dir" data-p="${prefix}" data-u="${u}" data-v="${d}">${d}</button>`).join('')}
  <button class="sm ${L.deg!=null?'sel':''}" data-a="degEntry" data-p="${prefix}" data-u="${u}">° ${L.deg!=null?L.deg:'___'}</button>
  <button class="sm ${L.dir==='UNKNOWN'?'sel':''}" data-a="dir" data-p="${prefix}" data-u="${u}" data-v="UNKNOWN">?</button></div>`}
@@ -155,8 +158,8 @@ SCREENS.hub=async()=>{
   const sp=d.location_id?await getOne('locations',d.location_id):null,lp=linePath(sp,d,600);
   h+=`<div class="card"><b>Line ${d.unit_label}</b> — ${esc(await spotName(d.location_id))}, facing ${d.lay_heading_deg!=null?d.lay_heading_deg+'°':esc(d.lay_heading)}
   ${lp?`<div class="mut">Calculated end (600 ft): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain?' (±22° compass-point uncertainty)':''}</div>`:`<div class="mut">No spot coordinates yet, so no line path.</div>`}</div>`}
- h+=`<button class="p big" data-a="loopStart">Start loop</button> <button class="big" data-a="go" data-s="move">Move lines</button>
-  <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`;
+ h+=`<!--ACT--><button class="p big" data-a="loopStart">Start loop</button> <button class="big" data-a="go" data-s="move">Move lines</button>
+  <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button><!--/ACT-->`;
  if(loops.length){h+=`<h2>Loops so far</h2><table><tr><th>#</th><th>Time</th><th>Medium</th><th>Large</th></tr>`+loops.map(l=>`<tr><td>${l.seq}</td><td>${(l.end_ts||l.start_ts).slice(11,16)}</td><td>${l.medium_count??'—'}</td><td>${l.large_count??'—'}</td></tr>`).join('')+`</table>`}
  return h};
 
@@ -186,11 +189,11 @@ SCREENS.move=async()=>{
  <h2>New area</h2><div class="row">${areas.map(a=>`<button class="${M.area_id===a.id?'sel':''}" data-a="mvArea" data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>
  ${M.area_id?units.map(sec).join(''):'<p class="mut">Pick the area to choose spots.</p>'}
  <p class="mut">Each line gets its own spot and direction.</p>
- <button class="p big" data-a="doMove" ${M.area_id&&units.every(u=>M.lines[u].spot)?'':'disabled'}>Move</button> <button data-a="go" data-s="hub">Cancel</button>`};
+ <!--ACT--><button class="p big" data-a="doMove" ${M.area_id&&units.every(u=>M.lines[u].spot)?'':'disabled'}>Move</button> <button data-a="go" data-s="hub">Cancel</button><!--/ACT-->`};
 
 SCREENS.finish=async()=>{const t=await openTrip();return `<h1>Finish trip ${t.id}</h1>
  <p>This ends the trip. Lines still down will be closed with reason TRIP_END. Final pick-up count is entered as a loop first (use Start loop, then Finish).</p>
- <button class="p big" data-a="doFinish">Finish trip</button> <button data-a="go" data-s="hub">Back</button>`};
+ <!--ACT--><button class="p big" data-a="doFinish">Finish trip</button> <button data-a="go" data-s="hub">Back</button><!--/ACT-->`};
 
 /* --- Data & backup --- */
 SCREENS.data=async()=>{
@@ -201,7 +204,7 @@ SCREENS.data=async()=>{
  <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
  <div id="msg" class="warn" style="display:none"></div>
  <h2>Trips (${trips.length})</h2><table><tr><th>Trip</th><th>Status</th><th>Loops</th></tr>${trips.map(t=>`<tr><td>${t.id}</td><td>${t.ended_ts?'finished':'open'}</td><td>${loops.filter(l=>l.trip_id===t.id&&!l.deleted_at).length}</td></tr>`).join('')}</table>
- <button data-a="go" data-s="home">Home</button>`};
+ <!--ACT--><button data-a="go" data-s="home">Home</button><!--/ACT-->`};
 
 /* --- Areas & spots --- */
 SCREENS.spots=async()=>{
@@ -209,7 +212,7 @@ SCREENS.spots=async()=>{
  return `<h1>Areas &amp; spots</h1><button class="sm" data-a="addArea">+ Add new area</button>`+areas.map(a=>`<div class="card"><b>${esc(a.name)}</b>${a.retired?' (retired)':''} ${a.placeholder?'<span class="mut">placeholder</span>':''}
   <button class="sm" data-a="editArea" data-id="${a.id}">Edit</button>
   ${locs.filter(l=>l.area_id===a.id).map(l=>`<div class="row"><span>${esc(l.name)}${l.needs_review?' <span class="mut">(to finish)</span>':''}${l.latitude!=null?' 📍':''}</span><button class="sm" data-a="editSpot" data-id="${l.id}">Edit</button>
-  ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}&z=17&t=k" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<button data-a="go" data-s="home">Home</button>`};
+  ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}&z=17&t=k" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<!--ACT--><button data-a="go" data-s="home">Home</button><!--/ACT-->`};
 
 /* ---------- dialogs ---------- */
 function modal(html){closeModal();const m=document.createElement('div');m.className='modal';m.id='modal';m.innerHTML=`<div>${html}</div>`;document.body.appendChild(m)}
