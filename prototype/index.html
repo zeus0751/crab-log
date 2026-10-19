@@ -50,7 +50,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.10', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.11', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -206,6 +206,7 @@ SCREENS.data=async()=>{
  <button class="p big" data-a="backup">Save backup file</button> <button class="big" id="shareBtn" data-a="shareBackup" disabled>Share backup</button>
  <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
  <div id="msg" class="warn" style="display:none"></div>
+ <div class="card"><b>Program version:</b> ${APP_VERSION}<br><button class="sm" data-a="chkUpdate">Check for update</button> <span id="updmsg" class="mut"></span></div>
  <h2>Trips (${trips.length})</h2><table><tr><th>Trip</th><th>Status</th><th>Loops</th></tr>${trips.map(t=>`<tr><td>${t.id}</td><td>${t.ended_ts?'finished':'open'}</td><td>${loops.filter(l=>l.trip_id===t.id&&!l.deleted_at).length}</td></tr>`).join('')}</table>
  <!--ACT--><button data-a="go" data-s="home">Home</button><!--/ACT-->`};
 
@@ -317,6 +318,8 @@ const ACT={
   await put('trips',{id:t.id,ended_ts:t0});go('data')},
  async backup(){const {blob,name}=await makeBackup();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);msg('Backup saved to Downloads as '+name+' ('+blob.size+' bytes)')},
  shareBackup(){if(!shareFile)return;navigator.share({files:[shareFile],title:shareFile.name}).catch(err=>msg('Share cancelled or failed: '+err.name+' : '+err.message))},
+ chkUpdate(){checkUpdate()},
+ forceRefresh(){forceRefresh()},
  restorePick(){const f=document.getElementById('rf');f.value='';f.onchange=()=>f.files[0]&&restoreFile(f.files[0]);f.click()}
 };
 function nearest(deg){return DIRS[Math.round(deg/45)%8]}
@@ -354,6 +357,24 @@ addEventListener('online',netBar);addEventListener('offline',netBar);
 let lock=null;async function getLock(){try{if('wakeLock' in navigator&&document.visibilityState==='visible')lock=await navigator.wakeLock.request('screen')}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.wantLock)getLock()});
 document.addEventListener('pointerdown',()=>{if(!S.wantLock){S.wantLock=true;getLock()}},{once:true});
+
+/* ---------- manual update check ---------- */
+async function checkUpdate(){const m=document.getElementById('updmsg');const say=t=>{if(m)m.innerHTML=t};
+ say('Checking…');
+ try{const r=await fetch('sw.js?cb='+Date.now(),{cache:'no-store'});const t=await r.text(),v=(t.match(/VERSION = '([^']+)'/)||[])[1];
+  if(!v){say('Could not read the newest version. Try again with a connection.');return}
+  if(v===APP_VERSION){say('You have the newest version ('+v+').');return}
+  say('Newest is '+v+'; you have '+APP_VERSION+'. Fetching it…');
+  const reg=await navigator.serviceWorker.getRegistration();if(reg)await reg.update();
+  await new Promise(r=>setTimeout(r,4000));
+  const reg2=await navigator.serviceWorker.getRegistration();
+  if(reg2&&reg2.waiting){say('Version '+v+' is ready. <button class="p sm" id="ap">Apply update</button>');document.getElementById('ap').onclick=()=>reg2.waiting.postMessage('SKIP_WAITING')}
+  else say('Version '+v+' is available but not installing by itself. <button class="p sm" data-a="forceRefresh">Refresh program (keeps your data)</button>');
+ }catch(e){say('Check failed: '+e.message+' (no connection?)')}}
+async function forceRefresh(){const m=document.getElementById('updmsg');
+ try{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();
+  for(const k of await caches.keys())if(k.startsWith('proto-cache-'))await caches.delete(k);
+  if(m)m.textContent='Done. Reloading…';setTimeout(()=>location.reload(),600)}catch(e){if(m)m.textContent='Problem: '+e.message}}
 
 /* ---------- service worker with confirm-before-update ---------- */
 function offerUpdate(w){const d=document.createElement('div');d.className='warn';d.innerHTML='A new version is ready. <button class="p sm" id="upd">Apply update</button>';
