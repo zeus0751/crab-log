@@ -50,7 +50,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.11', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.12', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -89,8 +89,9 @@ function parseCoord(text){ // accepts decimal "38.6123 -75.1234" or degrees-minu
  if(!text)return null;const t=text.trim();
  let dec=t.match(/^\s*([+-]?\d+\.\d+)\s*[,\s]\s*([+-]?\d+\.\d+)\s*$/);
  if(dec)return ok(+dec[1],+dec[2]);
- const re=/(\d+)\s*[°\s]\s*(\d+(?:\.\d+)?)\s*['′]?\s*([NSEW])/gi;let m,v=[];
- while((m=re.exec(t))){let x=+m[1]+(+m[2])/60;if(/[SW]/i.test(m[3]))x=-x;v.push(x)}
+ const t2=t.replace(/[”“″]/g,'"').replace(/[’‘′]/g,"'");
+ const re=/(\d+)\s*[°\s]\s*(\d+(?:\.\d+)?)\s*'?\s*(?:(\d+(?:\.\d+)?)\s*")?\s*([NSEW])/gi;let m,v=[];
+ while((m=re.exec(t2))){let x=+m[1]+(+m[2])/60+(m[3]?(+m[3])/3600:0);if(/[SW]/i.test(m[4]))x=-x;v.push(x)}
  if(v.length===2)return ok(v[0],v[1]);return null;
  function ok(a,b){return(Math.abs(a)<=90&&Math.abs(b)<=180)?{lat:a,lon:b}:null}}
 function linePath(spot,dep,lengthFt=600){ // end of line from spot position along heading (true north assumed; stored reference UNKNOWN)
@@ -100,6 +101,7 @@ function linePath(spot,dep,lengthFt=600){ // end of line from spot position alon
  return{lat:spot.latitude+lengthFt*Math.cos(r)/ftLat,lon:spot.longitude+lengthFt*Math.sin(r)/(ftLat*Math.cos(spot.latitude*Math.PI/180)),uncertain:dep.lay_heading_deg==null}}
 
 /* ---------- helpers ---------- */
+const bySpot=(a,b)=>((a.sort_order??9999)-(b.sort_order??9999))||(a.name<b.name?-1:1);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const app=()=>document.getElementById('app');
 function go(screen,extra){S=Object.assign({screen},extra||{});render()}
@@ -137,7 +139,7 @@ SCREENS.home=async()=>{
 /* --- Start trip --- */
 SCREENS.start=async()=>{
  const D=S.draft,areas=(await getAll('areas')).filter(a=>!a.deleted_at&&!a.retired).sort((a,b)=>a.name<b.name?-1:1);
- const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===D.area_id);
+ const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===D.area_id).sort(bySpot);
  const line=async u=>{const L=D.lines[u];return `<div class="card"><h2>Line ${u}</h2>
   <div class="row">${spots.map(s=>`<button class="${L.spot===s.id?'sel':''}" data-a="spotPick" data-u="${u}" data-id="${s.id}">${esc(s.name)}</button>`).join('')}
   <button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>
@@ -185,7 +187,7 @@ function sumF(sfx){let any=false,t=0;PAD.fields.filter(f=>f.key.endsWith(sfx)).f
 SCREENS.move=async()=>{
  const t=await openTrip(),M=S.mv||(S.mv={which:'A',area_id:null,lines:{A:{spot:null,dir:null,deg:null},B:{spot:null,dir:null,deg:null}}});
  const areas=(await getAll('areas')).filter(a=>!a.deleted_at&&!a.retired);
- const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===(M.area_id));
+ const spots=(await getAll('locations')).filter(l=>!l.deleted_at&&!l.retired&&l.area_id===(M.area_id)).sort(bySpot);
  const units=M.which==='BOTH'?['A','B']:[M.which];
  const sec=u=>{const L=M.lines[u];return `<div class="card"><h2>Line ${u} — new spot</h2><div class="row">${spots.map(s=>`<button class="${L.spot===s.id?'sel':''}" data-a="mvSpot" data-u="${u}" data-id="${s.id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="MV${u}">+ Add new spot</button></div>${dirPicker('M',u,L)}</div>`};
  return `<h1>Move lines</h1><div class="row">${['A','B','BOTH'].map(w=>`<button class="${M.which===w?'sel':''}" data-a="mvWhich" data-v="${w}">${w==='BOTH'?'Both lines':'Line '+w}</button>`).join('')}</div>
@@ -215,7 +217,7 @@ SCREENS.spots=async()=>{
  const areas=(await getAll('areas')).filter(a=>!a.deleted_at).sort((a,b)=>a.name<b.name?-1:1),locs=(await getAll('locations')).filter(l=>!l.deleted_at);
  return `<h1>Areas &amp; spots</h1><button class="sm" data-a="addArea">+ Add new area</button>`+areas.map(a=>`<div class="card"><b>${esc(a.name)}</b>${a.retired?' (retired)':''} ${a.placeholder?'<span class="mut">placeholder</span>':''}
   <button class="sm" data-a="editArea" data-id="${a.id}">Edit</button>
-  ${locs.filter(l=>l.area_id===a.id).map(l=>`<div class="row"><span>${esc(l.name)}${l.needs_review?' <span class="mut">(to finish)</span>':''}${l.latitude!=null?' 📍':''}</span><button class="sm" data-a="editSpot" data-id="${l.id}">Edit</button>
+  ${locs.filter(l=>l.area_id===a.id).sort(bySpot).map(l=>`<div class="row"><span>${esc(l.name)}${l.retired?' (retired)':''}${l.needs_review?' <span class="mut">(to finish)</span>':''}${l.latitude!=null?' 📍':''}</span><button class="sm" data-a="editSpot" data-id="${l.id}">Edit</button>
   ${l.latitude!=null?`<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}&z=17&t=k" target="_blank" rel="noopener">map</a>`:''}</div>`).join('')}</div>`).join('')+`<!--ACT--><button data-a="go" data-s="home">Home</button><!--/ACT-->`};
 
 /* ---------- dialogs ---------- */
@@ -237,6 +239,7 @@ async function spotDialog(areaId,rec,cb){
  modal(`<h2>${rec?'Edit spot':'New spot in '+esc(await areaName(areaId))}</h2><label>Name</label><input type="text" enterkeyhint="done" id="sn" value="${esc(rec?rec.name:def)}">
  <label>Position from chartplotter (not shown on crab screens)</label><input type="text" enterkeyhint="done" id="sp" value="${esc(rec?rec.position_text||'':'')}" placeholder="Example: 38°36.738' N 075°06.274' W">
  <div id="pc" class="mut"></div>
+ ${rec?`<div class="row"><button class="${rec.retired?'sel':''}" data-a="toggleRetire" data-id="${rec.id}" data-st="locations">${rec.retired?'Retired (tap to restore)':'Retire spot'}</button></div>`:''}
  <div class="row"><button class="${rec&&rec.needs_review?'sel':''}" id="nr">${!rec||rec.needs_review?'Mark: to finish later ✔':'Mark: to finish later'}</button></div>
  <div class="stick"><button class="p big" id="sok">Save</button> <button data-a="closeM">Cancel</button></div>`);
  let nr=!rec||rec.needs_review;const nrb=document.getElementById('nr');nrb.onclick=()=>{nr=!nr;nrb.textContent=nr?'Mark: to finish later ✔':'Mark: to finish later'};
