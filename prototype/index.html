@@ -50,7 +50,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.12', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.13', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -209,6 +209,7 @@ SCREENS.data=async()=>{
  <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
  <div id="msg" class="warn" style="display:none"></div>
  <div class="card"><b>Program version:</b> ${APP_VERSION}<br><button class="sm" data-a="chkUpdate">Check for update</button> <span id="updmsg" class="mut"></span></div>
+ <div class="card"><b>Test data</b><br><span class="mut">Erases every trip, loop, count, area and spot on this tablet. A backup file is saved first.</span><br><button class="sm danger" data-a="eraseAll">Erase ALL data…</button></div>
  <h2>Trips (${trips.length})</h2><table><tr><th>Trip</th><th>Status</th><th>Loops</th></tr>${trips.map(t=>`<tr><td>${t.id}</td><td>${t.ended_ts?'finished':'open'}</td><td>${loops.filter(l=>l.trip_id===t.id&&!l.deleted_at).length}</td></tr>`).join('')}</table>
  <!--ACT--><button data-a="go" data-s="home">Home</button><!--/ACT-->`};
 
@@ -322,6 +323,13 @@ const ACT={
  async backup(){const {blob,name}=await makeBackup();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);msg('Backup saved to Downloads as '+name+' ('+blob.size+' bytes)')},
  shareBackup(){if(!shareFile)return;navigator.share({files:[shareFile],title:shareFile.name}).catch(err=>msg('Share cancelled or failed: '+err.name+' : '+err.message))},
  chkUpdate(){checkUpdate()},
+ async eraseAll(){
+  const a=await getAll('trips'),l=await getAll('locations');
+  if(!confirm(`This will ERASE all ${a.length} trips and ${l.length} spots on this tablet, and everything else you have entered. A backup file will be saved to Downloads first. Continue?`))return;
+  const w=prompt('Type ERASE (capital letters) to confirm.');if(w!=='ERASE'){msg('Nothing was erased.');return}
+  await ACT.backup();
+  for(const st of DATA_STORES)await tx(st,'readwrite',x=>x.objectStore(st).clear());
+  flashSaved();go('data');setTimeout(()=>msg('All data erased. A backup file was saved to Downloads just before. Use Restore from file to load your spot list.'),300)},
  forceRefresh(){forceRefresh()},
  restorePick(){const f=document.getElementById('rf');f.value='';f.onchange=()=>f.files[0]&&restoreFile(f.files[0]);f.click()}
 };
@@ -390,6 +398,7 @@ if('serviceWorker' in navigator){addEventListener('load',()=>{navigator.serviceW
 /* ---------- start ---------- */
 (async()=>{db=await openDB();
  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
- if(!(await getAll('areas')).length)for(const n of PLACEHOLDER_AREAS)await put('areas',{id:'AREA-'+n.replace(/\W+/g,'').toLowerCase(),name:n,placeholder:true,tide_station_id:null});
+ if(!(await getOne('meta','seeded'))){if(!(await getAll('areas')).length)for(const n of PLACEHOLDER_AREAS)await put('areas',{id:'AREA-'+n.replace(/\W+/g,'').toLowerCase(),name:n,placeholder:true,tide_station_id:null});
+  await tx('meta','readwrite',x=>x.objectStore('meta').put({id:'seeded',value:true}))}
  netBar();render()})();
 </script></body></html>
