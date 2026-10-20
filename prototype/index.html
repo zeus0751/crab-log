@@ -50,7 +50,7 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;pad
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION='proto-0.1.13', SCHEMA='proto-1', TZ='America/New_York';
+const APP_VERSION='proto-0.1.14', SCHEMA='proto-1', TZ='America/New_York';
 const STORES=['meta','trips','stays','deployments','loops','loop_unit_counts','areas','locations'];
 const DIRS=['N','NE','E','SE','S','SW','W','NW'];
 const DEG={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -240,6 +240,7 @@ async function spotDialog(areaId,rec,cb){
  modal(`<h2>${rec?'Edit spot':'New spot in '+esc(await areaName(areaId))}</h2><label>Name</label><input type="text" enterkeyhint="done" id="sn" value="${esc(rec?rec.name:def)}">
  <label>Position from chartplotter (not shown on crab screens)</label><input type="text" enterkeyhint="done" id="sp" value="${esc(rec?rec.position_text||'':'')}" placeholder="Example: 38°36.738' N 075°06.274' W">
  <div id="pc" class="mut"></div>
+ <label>Usual heading in degrees (optional; pre-fills the direction)</label><input type="text" inputmode="numeric" enterkeyhint="done" id="uh" value="${rec&&rec.usual_heading_deg!=null?rec.usual_heading_deg:''}" placeholder="e.g. 322">
  ${rec?`<div class="row"><button class="${rec.retired?'sel':''}" data-a="toggleRetire" data-id="${rec.id}" data-st="locations">${rec.retired?'Retired (tap to restore)':'Retire spot'}</button></div>`:''}
  <div class="row"><button class="${rec&&rec.needs_review?'sel':''}" id="nr">${!rec||rec.needs_review?'Mark: to finish later ✔':'Mark: to finish later'}</button></div>
  <div class="stick"><button class="p big" id="sok">Save</button> <button data-a="closeM">Cancel</button></div>`);
@@ -248,9 +249,9 @@ async function spotDialog(areaId,rec,cb){
  const chk=()=>{const t=sp.value.trim();if(!t){pc.textContent='';return}const c=parseCoord(t);pc.textContent=c?`Read as ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`:'Could not read this position (it will still be saved as text).'};sp.oninput=chk;chk();
  document.getElementById('sok').onclick=async()=>{const n=document.getElementById('sn').value.trim();if(!n){alert('Name needed');return}
   if(siblings.some(l=>l.name.toLowerCase()===n.toLowerCase()&&(!rec||l.id!==rec.id))){alert('That spot name already exists in this area');return}
-  const t=sp.value.trim(),c=parseCoord(t);
+  const t=sp.value.trim(),c=parseCoord(t),uhv=document.getElementById('uh').value.trim();if(uhv!==''&&!(/^\d{1,3}$/.test(uhv)&&+uhv<=360)){alert('Usual heading must be 0 to 360 degrees');return}
   const r=await put('locations',{id:rec?rec.id:'LOC-'+Date.now().toString(36),area_id:areaId,name:n,position_text:t||null,latitude:c?c.lat:null,longitude:c?c.lon:null,
-   coordinate_basis:c?'CHARTPLOTTER':null,needs_review:nr&&true,created_on_trip_id:rec?rec.created_on_trip_id:(S.tripId||null)});
+   coordinate_basis:c?'CHARTPLOTTER':null,usual_heading_deg:uhv===''?null:(+uhv)%360,needs_review:nr&&true,created_on_trip_id:rec?rec.created_on_trip_id:(S.tripId||null)});
   closeModal();cb&&cb(r)}}
 
 /* ---------- actions ---------- */
@@ -260,11 +261,11 @@ const ACT={
  async startTrip(){PAD=null;const a=(await getAll('areas')).filter(x=>!x.retired&&!x.deleted_at);
   go('start',{draft:{area_id:a.length===1?a[0].id:null,lines:{A:{spot:null,dir:null,deg:null},B:{spot:null,dir:null,deg:null}},perLine:false}})},
  async areaPick(e){S.draft.area_id=e.dataset.id;S.draft.lines.A.spot=S.draft.lines.B.spot=null;render()},
- spotPick(e){S.draft.lines[e.dataset.u].spot=e.dataset.id;render()},
+ async spotPick(e){const L=S.draft.lines[e.dataset.u];L.spot=e.dataset.id;await prefill(L,e.dataset.id);render()},
  perLineToggle(){S.draft.perLine=!S.draft.perLine;render()},
- dir(e){const L=e.dataset.p==='D'?S.draft.lines[e.dataset.u]:S.mv.lines[e.dataset.u];L.dir=e.dataset.v;L.deg=null;render()},
+ dir(e){const L=e.dataset.p==='D'?S.draft.lines[e.dataset.u]:S.mv.lines[e.dataset.u];L.dir=e.dataset.v;L.deg=null;L.auto=false;render()},
  degEntry(e){const L=e.dataset.p==='D'?S.draft.lines[e.dataset.u]:S.mv.lines[e.dataset.u];
-  degDialog(v=>{L.deg=v;if(v!=null)L.dir=nearest(v);render()},L.deg)},
+  degDialog(v=>{L.deg=v;L.auto=false;if(v!=null)L.dir=nearest(v);render()},L.deg)},
  degOk(){const v=PAD.fields[0].val;if(v===''){closeModal();return}const n=+v;if(n>360){alert('Degrees must be 0 to 360');return}closeModal();degDialog.cb(n%360)},
  degClear(){closeModal();degDialog.cb(null)},
  addArea(){areaDialog(null,async r=>{if(S.screen==='start')S.draft.area_id=r.id;render()})},
@@ -303,7 +304,7 @@ const ACT={
   PAD=null;go('hub')},
  mvWhich(e){S.mv.which=e.dataset.v;render()},
  mvArea(e){S.mv.area_id=e.dataset.id;S.mv.lines.A.spot=S.mv.lines.B.spot=null;render()},
- mvSpot(e){S.mv.lines[e.dataset.u].spot=e.dataset.id;render()},
+ async mvSpot(e){const L=S.mv.lines[e.dataset.u];L.spot=e.dataset.id;await prefill(L,e.dataset.id);render()},
  async doMove(){const M=S.mv,t=await openTrip(),t0=now();
   const deps=(await getAll('deployments')).filter(d=>d.trip_id===t.id&&!d.deploy_end_ts&&!d.deleted_at);
   const moving=deps.filter(d=>M.which==='BOTH'||d.unit_label===M.which);
@@ -333,6 +334,9 @@ const ACT={
  forceRefresh(){forceRefresh()},
  restorePick(){const f=document.getElementById('rf');f.value='';f.onchange=()=>f.files[0]&&restoreFile(f.files[0]);f.click()}
 };
+async function prefill(L,spotId){ // fill direction from the spot's usual heading; never overrides a direction you chose yourself
+ if((L.dir!=null||L.deg!=null)&&!L.auto)return;const sp=await getOne('locations',spotId);
+ if(sp&&sp.usual_heading_deg!=null){L.deg=sp.usual_heading_deg;L.dir=nearest(sp.usual_heading_deg);L.auto=true}else if(L.auto){L.dir=null;L.deg=null;L.auto=false}}
 function nearest(deg){return DIRS[Math.round(deg/45)%8]}
 function msg(t){const m=document.getElementById('msg');if(m){m.style.display='block';m.textContent=t}}
 
