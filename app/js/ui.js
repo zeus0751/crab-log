@@ -86,6 +86,7 @@ const newLine = (d, sp) => ({ spot: null, dir: null, deg: null, auto: false, use
 const stringFt = L => Math.max(0, (L.traps - 1) * L.spacing);
 SCREENS.crab = async () => {
   const D = S.draft, areas = live(await getAll('areas')).filter(isActive).sort((a, b) => a.name < b.name ? -1 : 1);
+  const stId = D.area_id ? (await getOne('areas', D.area_id)).tide_station_id : null;
   const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === D.area_id).sort(bySpot), anyUse = D.lines.A.use || D.lines.B.use;
   const gearBox = (u, k, label, val, unit) => `<div class="fld sm" data-a="gearNum" data-u="${u}" data-k="${k}"><b>${label}</b><span>${val}</span><small>${unit}</small></div>`;
   const line = u => { const L = D.lines[u];
@@ -98,6 +99,7 @@ SCREENS.crab = async () => {
  <div class="row"><span class="mut chiplab">Bait</span>${BAITS.map(([c, l]) => `<button class="sm ${L.bait === c ? 'sel' : ''}" data-a="bait" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div></div>`; };
   return `<h1>Begin crabbing</h1>${ACTION_BAR(`<button class="p big" data-a="beginCrabbing" ${D.area_id && anyUse ? '' : 'disabled'}>Begin crabbing</button> <button class="big" data-a="sameAsLast">Same as last time</button> <button data-a="go" data-s="hub">Cancel</button>`)}
  <h2>Area</h2><div class="row">${areas.map(a => `<button class="${D.area_id === a.area_id ? 'sel' : ''}" data-a="areaPick" data-id="${a.area_id}">${esc(a.name)}</button>`).join('')}<button class="sm" data-a="addArea">+ Add new area</button></div>
+ ${D.area_id ? `<div class="row"><span class="mut chiplab">Tide station</span>${STATIONS.map(([c, l]) => `<button class="sm ${stId === c ? 'sel' : ''}" data-a="drStation" data-v="${c}">${l}</button>`).join('')}</div>${stId ? '' : '<div class="warn">No tide station chosen for this area, so tides will not fill in. Pick one (it is remembered for this area).</div>'}` : ''}
  ${D.area_id ? line('A') + line('B') : '<p class="mut">Pick an area to choose spots.</p>'}
  <div class="card row"><button class="${D.perLine ? 'sel' : ''}" data-a="perLineToggle">Count each line separately: ${D.perLine ? 'ON' : 'OFF'}</button></div>`;
 };
@@ -158,6 +160,7 @@ Object.assign(ACT, {
       D.lines[u] = Object.assign(newLine(d, sp), { spot: d.location_id, dir: d.lay_heading, deg: d.lay_heading_deg, auto: false }); }
     render();
   },
+  async drStation(e) { await put('areas', { area_id: S.draft.area_id, tide_station_id: e.dataset.v }); render(); },
   eq(e) { S.draft.lines[e.dataset.u].eq = e.dataset.v; render(); },
   bait(e) { const L = S.draft.lines[e.dataset.u]; L.bait = L.bait === e.dataset.v ? null : e.dataset.v; render(); },
   useLine(e) { const L = S.draft.lines[e.dataset.u]; L.use = !L.use; render(); },
@@ -261,7 +264,7 @@ SCREENS.hub = async () => {
    <b>Total crabs ${tot == null ? '—' : tot}</b> <span class="mut">(Medium ${med ?? '—'} · Large ${lrg ?? '—'} · calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
    <span class="mut">Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
   h += `<div class="card"><b>Tides</b> <span class="mut">(${tides.length ? stationName(tides[0].station) : 'none stored'})</span>: ${tides.length ? tides.map(x => (x.tide_type === 'HIGH' ? 'High ' : 'Low ') + tsTime(x.tide_time) + (x.basis === 'PREDICTED' ? '' : '*')).join(' · ') : '—'}<br>
-   <b>Tide now: ${PHASE_LABEL[tidePhase(new Date(), tdates, sl)]}</b> <span class="mut">(calculated, slack = within ${sl} min of a tide)</span>${moon ? `<br><b>Moon ${moon.value_num}%</b> ${esc(moon.value_text || '')} <span class="mut">(calculated, approximate)</span>` : ''}
+   <b>Tide now: ${PHASE_LABEL[tidePhase(new Date(), tdates, sl)]}</b> <span class="mut">(calculated, slack = within ${sl} min of a tide)</span><br><b>Moon ${moon ? moon.value_num : moonInfo(tideDate(t.depart_ts)).illum}%</b> ${esc(moon ? moon.value_text || '' : moonInfo(tideDate(t.depart_ts)).name)} <span class="mut">(lit, at departure; calculated, approximate)</span>
    ${tide2 && loops.length ? `<br><span class="mut">Crabs before the tide change (${tsTime(mkTs(tide2.date))}): ${before} · after: ${after} (calculated)</span>` : ''}
    ${t.status === 'IN_PROGRESS' && (!tdates.length || new Date() > lastTide) ? `<div class="warn">${tdates.length ? 'The last stored tide has passed.' : 'No tides stored for this trip.'} <button class="sm p" data-a="tidesOpen">Add tide</button></div>` : ''}</div>`;
   for (const e of openEv) h += `<div class="warn"><b>Event in progress: ${evLabel(e.event_type)}</b> since ${tsTime(e.start_ts)} (${fmtMin(minutesBetween(e.start_ts, now()))})${e.note ? ' — ' + esc(e.note) : ''} <button class="sm p" data-a="eventEnd" data-id="${e.event_id}">End event</button></div>`;
