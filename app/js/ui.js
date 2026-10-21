@@ -76,12 +76,27 @@ SCREENS.start = async () => {
   ${box('air', 'Air temp', D.air, '°F')}${box('water', 'Water temp', D.water, '°F')}</div>
  <p class="mut">Area, spots and lines are entered later, when you tap <b>Begin crabbing</b> on location.</p>`;
 };
-/* Begin crabbing: area, Line A/B spots and directions (on location) */
+/* Begin crabbing: area, Line A/B spots, directions and gear (on location) */
+const BAITS = [['CHICKEN_NECKS', 'Chicken necks'], ['BULL_LIPS', 'Bull lips'], ['BUNKER', 'Bunker'], ['FISH_OTHER', 'Other fish'], ['RAZOR_CLAMS', 'Razor clams'], ['EEL', 'Eel'], ['OTHER', 'Other']];
+const EQS = [['TROTLINE', 'Trotline'], ['TRAP', 'Trap string'], ['POT', 'Pot'], ['OTHER', 'Other']];
+const eqLabel = c => (EQS.find(x => x[0] === c) || [0, c || 'not recorded'])[1];
+const baitLabel = c => (BAITS.find(x => x[0] === c) || [0, 'not recorded'])[1];
+async function lastGear() { const deps = live(await getAll('deployments')).sort((a, b) => (a.deploy_start_ts || '') < (b.deploy_start_ts || '') ? 1 : -1), g = {}; for (const d of deps) if (!g[d.unit_label]) g[d.unit_label] = d; return g; }
+const newLine = (d, sp) => ({ spot: null, dir: null, deg: null, auto: false, use: true, eq: d ? d.equipment_type : 'TROTLINE', len: (d && d.line_length_ft) || 600, traps: (d && d.trap_count) || 10, spacing: (d && d.trap_spacing_ft) || sp, bait: d ? d.bait_type : null });
+const stringFt = L => Math.max(0, (L.traps - 1) * L.spacing);
 SCREENS.crab = async () => {
   const D = S.draft, areas = live(await getAll('areas')).filter(isActive).sort((a, b) => a.name < b.name ? -1 : 1);
-  const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === D.area_id).sort(bySpot);
-  const line = u => { const L = D.lines[u]; return `<div class="card"><h2>Line ${u}</h2><div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="spotPick" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>${dirPicker('D', u, L)}</div>`; };
-  return `<h1>Begin crabbing</h1>${ACTION_BAR(`<button class="p big" data-a="beginCrabbing" ${D.area_id ? '' : 'disabled'}>Begin crabbing</button> <button data-a="go" data-s="hub">Cancel</button>`)}
+  const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === D.area_id).sort(bySpot), anyUse = D.lines.A.use || D.lines.B.use;
+  const gearBox = (u, k, label, val, unit) => `<div class="fld sm" data-a="gearNum" data-u="${u}" data-k="${k}"><b>${label}</b><span>${val}</span><small>${unit}</small></div>`;
+  const line = u => { const L = D.lines[u];
+    if (!L.use) return `<div class="card"><h2>Line ${u}</h2><span class="mut">Not used on this trip.</span> <button class="sm" data-a="useLine" data-u="${u}">Use Line ${u}</button></div>`;
+    return `<div class="card"><h2>Line ${u} ${D.lines[u === 'A' ? 'B' : 'A'].use ? `<button class="sm" data-a="useLine" data-u="${u}">Not using</button>` : ''}</h2>
+ <div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="spotPick" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>${dirPicker('D', u, L)}
+ <div class="row"><span class="mut chiplab">Gear</span>${EQS.map(([c, l]) => `<button class="sm ${L.eq === c ? 'sel' : ''}" data-a="eq" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div>
+ ${L.eq === 'TROTLINE' ? `<div class="row">${gearBox(u, 'len', 'Length', L.len, 'ft · about ' + Math.round(L.len / 6) + ' snoods (calculated)')}</div>`
+   : L.eq === 'TRAP' ? `<div class="row">${gearBox(u, 'traps', 'Traps in string', L.traps, '')}${gearBox(u, 'spacing', 'Spacing (estimate)', L.spacing, 'ft')}<span class="mut">String ≈ ${stringFt(L)} ft (calculated)</span></div>` : ''}
+ <div class="row"><span class="mut chiplab">Bait</span>${BAITS.map(([c, l]) => `<button class="sm ${L.bait === c ? 'sel' : ''}" data-a="bait" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div></div>`; };
+  return `<h1>Begin crabbing</h1>${ACTION_BAR(`<button class="p big" data-a="beginCrabbing" ${D.area_id && anyUse ? '' : 'disabled'}>Begin crabbing</button> <button class="big" data-a="sameAsLast">Same as last time</button> <button data-a="go" data-s="hub">Cancel</button>`)}
  <h2>Area</h2><div class="row">${areas.map(a => `<button class="${D.area_id === a.area_id ? 'sel' : ''}" data-a="areaPick" data-id="${a.area_id}">${esc(a.name)}</button>`).join('')}<button class="sm" data-a="addArea">+ Add new area</button></div>
  ${D.area_id ? line('A') + line('B') : '<p class="mut">Pick an area to choose spots.</p>'}
  <div class="card row"><button class="${D.perLine ? 'sel' : ''}" data-a="perLineToggle">Count each line separately: ${D.perLine ? 'ON' : 'OFF'}</button></div>`;
@@ -129,16 +144,32 @@ Object.assign(ACT, {
     go('hub');
   },
   async crabStart() {
-    const areas = live(await getAll('areas')).filter(isActive);
-    go('crab', { draft: { area_id: areas.length === 1 ? areas[0].area_id : null, lines: { A: { spot: null, dir: null, deg: null }, B: { spot: null, dir: null, deg: null } }, perLine: !!(await metaGet('count_per_line_default', false)) } });
+    const areas = live(await getAll('areas')).filter(isActive), g = await lastGear(), sp = await metaGet('default_trap_spacing_ft', 59);
+    go('crab', { draft: { area_id: areas.length === 1 ? areas[0].area_id : null, lines: { A: newLine(g.A, sp), B: newLine(g.B, sp) }, perLine: !!(await metaGet('count_per_line_default', false)) } });
   },
+  async sameAsLast() {
+    const deps = live(await getAll('deployments')).filter(d => d.area_visit_id).sort((a, b) => (a.deploy_start_ts || '') < (b.deploy_start_ts || '') ? 1 : -1);
+    if (!deps.length) { alert('There is no earlier setup to copy yet.'); return; }
+    const vid = deps[0].area_visit_id, grp = deps.filter(d => d.area_visit_id === vid), v = await getOne('area_visits', vid), tr = await getOne('trips', deps[0].trip_id), sp = await metaGet('default_trap_spacing_ft', 59), D = S.draft;
+    D.area_id = v.area_id; D.perLine = !!(tr && tr.count_per_line);
+    for (const u of ['A', 'B']) { const d = grp.find(x => x.unit_label === u); if (!d) { D.lines[u] = Object.assign(newLine(null, sp), { use: false }); continue; }
+      D.lines[u] = Object.assign(newLine(d, sp), { spot: d.location_id, dir: d.lay_heading, deg: d.lay_heading_deg, auto: false }); }
+    render();
+  },
+  eq(e) { S.draft.lines[e.dataset.u].eq = e.dataset.v; render(); },
+  bait(e) { const L = S.draft.lines[e.dataset.u]; L.bait = L.bait === e.dataset.v ? null : e.dataset.v; render(); },
+  useLine(e) { const L = S.draft.lines[e.dataset.u]; L.use = !L.use; render(); },
+  gearNum(e) { const L = S.draft.lines[e.dataset.u], k = e.dataset.k, lab = { len: 'Line length (ft)', traps: 'Traps in this string', spacing: 'Spacing between traps (ft, estimate)' }[k];
+    numDialog(lab, lab, L[k], { max: 4 }, v => { if (v != null && +v > 0) L[k] = +v; render(); }); },
   async beginCrabbing() {
     const D = S.draft, t = await currentTrip(), tn = now(), n = live(await getAll('area_visits')).filter(v => v.trip_id === t.trip_id).length;
     const vid = await nextChild(t.trip_id, 'V', 2);
     await put('area_visits', { area_visit_id: vid, trip_id: t.trip_id, seq: n + 1, area_id: D.area_id, arrive_ts: tn, leave_ts: null, stay_notes: null });
     const nd = live(await getAll('deployments')).filter(x => x.trip_id === t.trip_id).length;
-    let i = 0; for (const u of ['A', 'B']) { const L = D.lines[u], did = await nextChild(t.trip_id, 'D', 2);
-      await put('deployments', { deployment_id: did, trip_id: t.trip_id, area_visit_id: vid, seq: nd + (++i), unit_label: u, equipment_type: 'TROTLINE', location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: tn, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null }); }
+    let i = 0; for (const u of ['A', 'B']) { const L = D.lines[u]; if (!L.use) continue; const did = await nextChild(t.trip_id, 'D', 2);
+      await put('deployments', { deployment_id: did, trip_id: t.trip_id, area_visit_id: vid, seq: nd + (++i), unit_label: u, equipment_type: L.eq, line_length_ft: L.eq === 'TROTLINE' ? L.len : null, snoods_per_line: null,
+        trap_count: L.eq === 'TRAP' ? L.traps : null, trap_spacing_ft: L.eq === 'TRAP' ? L.spacing : null, trap_spacing_basis: L.eq === 'TRAP' ? 'ESTIMATED' : null, bait_type: L.bait, bait_notes: null,
+        location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: tn, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null }); }
     await put('trips', { trip_id: t.trip_id, count_per_line: D.perLine });
     go('hub'); conditionsDialog('full');
   },
@@ -153,73 +184,120 @@ Object.assign(ACT, {
 });
 
 /* ================= TRIP HUB ================= */
+const pathFt = d => d.equipment_type === 'TRAP' ? Math.max(0, ((d.trap_count || 1) - 1) * (d.trap_spacing_ft || 59)) : (d.line_length_ft || 600);
+const EVTYPES = [['SNAG', 'Snag'], ['PROP_FOUL', 'Prop foul'], ['MOVE_LINES', 'Moving lines'], ['GEAR_ISSUE', 'Gear issue'], ['WEATHER', 'Weather'], ['OTHER', 'Other']];
+const evLabel = c => (EVTYPES.find(x => x[0] === c) || [0, c])[1];
 SCREENS.hub = async () => {
   const t = await currentTrip(); if (!t) { S.screen = 'home'; return SCREENS.home(); }
   const deps = await activeDeps(t.trip_id), loops = await tripLoops(t.trip_id), v = await openVisit(t.trip_id);
-  const sum = k => loops.some(l => l[k] != null) ? loops.reduce((a, l) => a + (l[k] || 0), 0) : '—';
+  const evs = live(await getAll('events')).filter(e => e.trip_id === t.trip_id).sort((a, b) => a.seq - b.seq), openEv = evs.filter(e => !e.end_ts);
+  const sum = k => loops.some(l => l[k] != null) ? loops.reduce((a, l) => a + (l[k] || 0), 0) : null;
+  const med = sum('medium_count'), lrg = sum('large_count'), tot = (med == null && lrg == null) ? null : (med || 0) + (lrg || 0);
+  const visits = live(await getAll('area_visits')).filter(x => x.trip_id === t.trip_id), crabMin = visits.reduce((a, x) => a + (minutesBetween(x.arrive_ts, x.leave_ts || now()) || 0), 0);
   let h = `<h1>Trip ${t.trip_id}</h1>`;
   h += ACTION_BAR(v
-    ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
-    : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
+    ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="loopStart" data-type="PICKUP_FINAL">Pick-up loop</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
+    : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
   h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · ${v ? 'Crabbing at: ' + esc(await areaName(v.area_id)) : 'Not crabbing now'} · Loops: ${loops.length}<br>
-   <span class="mut">Calculated totals: Medium ${sum('medium_count')} · Large ${sum('large_count')} · Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
+   <b>Total crabs ${tot == null ? '—' : tot}</b> <span class="mut">(Medium ${med ?? '—'} · Large ${lrg ?? '—'} · calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
+   <span class="mut">Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
+  for (const e of openEv) h += `<div class="warn"><b>Event in progress: ${evLabel(e.event_type)}</b> since ${tsTime(e.start_ts)} (${fmtMin(minutesBetween(e.start_ts, now()))})${e.note ? ' — ' + esc(e.note) : ''} <button class="sm p" data-a="eventEnd" data-id="${e.event_id}">End event</button></div>`;
   for (const d of deps) {
-    const sp = d.location_id ? await getOne('locations', d.location_id) : null, lp = linePath(sp, d, d.line_length_ft || 600);
-    h += `<div class="card"><b>Line ${d.unit_label}</b> — ${esc(await spotName(d.location_id))}, facing ${d.lay_heading_deg != null ? d.lay_heading_deg + '°' : esc(d.lay_heading || 'not set')}
-     ${lp ? `<div class="mut">Calculated end (${d.line_length_ft || 600} ft, approximate): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain ? ' (±22° compass-point uncertainty)' : ''}</div>` : `<div class="mut">No spot coordinates or direction yet, so no line path.</div>`}</div>`;
+    const sp = d.location_id ? await getOne('locations', d.location_id) : null, ft = pathFt(d), lp = linePath(sp, d, ft);
+    h += `<div class="card"><b>Line ${d.unit_label}</b> — ${esc(await spotName(d.location_id))}, facing ${d.lay_heading_deg != null ? d.lay_heading_deg + '°' : esc(d.lay_heading || 'not set')}<br>
+     <span class="mut">${eqLabel(d.equipment_type)}${d.equipment_type === 'TRAP' ? ', ' + d.trap_count + ' traps' : d.line_length_ft ? ', ' + d.line_length_ft + ' ft' : ''} · bait: ${baitLabel(d.bait_type)}</span>
+     ${lp ? `<div class="mut">Calculated end (${ft} ft, approximate): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain ? ' (±22° compass-point uncertainty)' : ''}</div>` : `<div class="mut">No spot coordinates or direction yet, so no line path.</div>`}</div>`;
   }
   if (t.trip_notes) h += `<div class="card"><b>Notes</b><br>${esc(t.trip_notes)}</div>`;
-  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Time</th><th>Medium</th><th>Large</th></tr>` + loops.map(l => `<tr><td>${l.seq}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${l.medium_count ?? '—'}</td><td>${l.large_count ?? '—'}</td></tr>`).join('') + `</table>`;
+  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Type</th><th>Time</th><th>Medium</th><th>Large</th><th></th></tr>` + loops.map((l, i) => `<tr><td>${l.seq}</td><td>${({ RUN: 'Run', PICKUP_MOVE: 'Pick-up (moving)', PICKUP_FINAL: 'Pick-up (final)' })[l.loop_type] || ''}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.medium_count ?? '—'}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.large_count ?? '—'}</td><td><button class="sm" data-a="editLoop" data-id="${l.loop_id}">${l.count_status === 'NOT_COUNTED' ? 'Count' : 'Edit'}</button>${i === loops.length - 1 ? ' <button class="sm danger" data-a="undoLoop" data-id="' + l.loop_id + '">Undo</button>' : ''}</td></tr>`).join('') + `</table>`;
+  const done = evs.filter(e => e.end_ts);
+  if (done.length) h += `<h2>Events</h2>` + done.map(e => `<div class="mut">${evLabel(e.event_type)} ${tsTime(e.start_ts)}–${tsTime(e.end_ts)} (${fmtMin(minutesBetween(e.start_ts, e.end_ts))})${e.note ? ' — ' + esc(e.note) : ''}</div>`).join('');
   S.afterRender = () => { clearInterval(S.tt); S.tt = setInterval(() => { const e = document.getElementById('ttime'); if (!e) { clearInterval(S.tt); return; } e.textContent = fmtMin(minutesBetween(t.depart_ts, now())); }, 20000); };
   return h;
 };
+Object.assign(ACT, {
+  eventOpen() {
+    S.evType = null;
+    modal(`<h2>Event</h2><div class="row" id="evt">${EVTYPES.map(([c, l]) => `<button data-a="evType" data-v="${c}">${l}</button>`).join('')}</div><label>Note (optional)</label><input type="text" id="evn" enterkeyhint="done">
+     <div class="row" style="margin-top:8px"><button class="p big" data-a="eventStart">Start event</button><button data-a="closeM">Cancel</button></div>`);
+  },
+  evType(e) { S.evType = e.dataset.v; document.querySelectorAll('#evt button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.evType)); },
+  async eventStart() {
+    if (!S.evType) { alert('Pick the type of event first.'); return; }
+    const t = await currentTrip(), v = await openVisit(t.trip_id), evs = live(await getAll('events')).filter(e => e.trip_id === t.trip_id), id = await nextChild(t.trip_id, 'E', 2), note = document.getElementById('evn').value.trim();
+    await put('events', { event_id: id, trip_id: t.trip_id, seq: evs.length + 1, event_type: S.evType, start_ts: now(), end_ts: null, note: note || null, affects_active_time: true, area_visit_id: v ? v.area_visit_id : null, loop_id: null });
+    closeModal(); render();
+  },
+  async eventEnd(e) { await put('events', { event_id: e.dataset.id, end_ts: now() }); render(); }
+});
 
 /* ================= LOOP: timer then count pad ================= */
-SCREENS.loopTimer = async () => `<h1>Loop running</h1><div class="tm" id="tm">0:00</div>
+const LTYPES = [['RUN', 'Run'], ['PICKUP_MOVE', 'Pick-up (moving)'], ['PICKUP_FINAL', 'Pick-up (final)']];
+const ltypeChips = () => `<div class="row"><span class="mut chiplab">Loop type</span>${LTYPES.map(([c, l]) => `<button class="sm ${S.loop.type === c ? 'sel' : ''}" data-a="ltype" data-v="${c}">${l}</button>`).join('')}</div>`;
+SCREENS.loopTimer = async () => `<h1>Loop ${S.loop.seq} running</h1><div class="tm" id="tm">0:00</div>${ltypeChips()}
  <p class="mut">Started ${tsTime(S.loop.start_ts)}. Tap when the lines are up and you are ready to count.</p>
  <button class="p big" data-a="linesUp">End of Loop Count</button> <button class="danger" data-a="loopCancel">Cancel loop</button>`;
-const countFields = perLine => perLine ? [['A_M', 'Line A Medium'], ['A_L', 'Line A Large'], ['B_M', 'Line B Medium'], ['B_L', 'Line B Large']] : [['M', 'Medium'], ['L', 'Large']];
+const countFields = units => units ? units.flatMap(u => [[u + '_M', `Line ${u} Medium`], [u + '_L', `Line ${u} Large`]]) : [['M', 'Medium'], ['L', 'Large']];
 SCREENS.count = async () => {
-  if (!PAD) PAD = new PadEngine(countFields(S.perLine).map(([k, l]) => ({ key: k, label: l, val: '', max: 3 })), paintCount);
+  if (!PAD) PAD = new PadEngine(countFields(S.units).map(([k, l]) => ({ key: k, label: l, val: S.init && S.init[k] != null ? String(S.init[k]) : '', max: 3 })), paintCount);
   PAD.paint = paintCount;
   S.afterRender = paintCount;
-  return `<h1 style="margin:2px 0 6px">Count — loop ${S.loop.seq}</h1><div class="cnt"><div id="cf" class="g-f"></div><div class="g-p">${padHTML(false)}</div>
-  <div class="g-b"><p class="mut" style="margin:0 0 4px">Empty = not counted. Typing 0 = counted zero.</p><button class="p big" data-a="saveLoop">Save loop</button> <button class="big" data-a="backToHub">Back</button></div></div>`;
+  return `<h1 style="margin:2px 0 6px">${S.edit ? 'Edit' : 'Count'} — loop ${S.loop.seq}</h1><div class="cnt"><div id="cf" class="g-f"></div><div class="g-p">${padHTML(false)}</div>
+  <div class="g-b"><p class="mut" style="margin:0 0 4px">Empty = not counted. Typing 0 = counted zero.</p><button class="p big" data-a="saveLoop">Save loop</button> <button class="big" data-a="saveLoop" data-later="1">${S.edit ? 'Mark not counted' : 'Count later'}</button> <button class="big" data-a="backToHub">Back</button></div></div>`;
 };
-function paintCount() { const c = document.getElementById('cf'); if (!c || !PAD) return; c.innerHTML = `<div class="row">${fieldBoxes(PAD)}</div>` + (S.perLine ? `<p class="mut">Total: Medium ${sumF('_M')}, Large ${sumF('_L')}</p>` : ''); }
+function paintCount() { const c = document.getElementById('cf'); if (!c || !PAD) return; c.innerHTML = `<div class="row">${fieldBoxes(PAD)}</div>` + ltypeChips() + (S.units ? `<p class="mut">Total: Medium ${sumF('_M')}, Large ${sumF('_L')}</p>` : ''); }
 function sumF(sfx) { let any = false, t = 0; PAD.fields.filter(f => f.key.endsWith(sfx)).forEach(f => { if (f.val !== '') { any = true; t += +f.val; } }); return any ? t : '—'; }
 Object.assign(ACT, {
-  async loopStart() {
-    const t = await currentTrip(), loops = await tripLoops(t.trip_id), lid = await nextChild(t.trip_id, 'L', 2);
-    S = { screen: 'loopTimer', tripId: t.trip_id, perLine: t.count_per_line, loop: { id: lid, seq: Math.max(0, ...loops.map(l => l.seq)) + 1, start_ts: now(), t0: Date.now(), type: 'RUN' } }; PAD = null;
-    S.timer = setInterval(() => { const e = document.getElementById('tm'); if (!e) { clearInterval(S.timer); return; } const s = Math.floor((Date.now() - S.loop.t0) / 1000); e.textContent = Math.floor(s / 60) + ':' + p2(s % 60); }, 1000);
+  async loopStart(e) {
+    const t = await currentTrip(), loops = await tripLoops(t.trip_id), lid = await nextChild(t.trip_id, 'L', 2), deps = await activeDeps(t.trip_id);
+    const units = t.count_per_line && deps.length ? deps.map(d => d.unit_label) : null, unitDeps = Object.fromEntries(deps.map(d => [d.unit_label, d.deployment_id]));
+    S = { screen: 'loopTimer', tripId: t.trip_id, units, unitDeps, loop: { id: lid, seq: Math.max(0, ...loops.map(l => l.seq)) + 1, start_ts: now(), t0: Date.now(), type: (e && e.dataset && e.dataset.type) || 'RUN' } }; PAD = null;
+    S.timer = setInterval(() => { const el = document.getElementById('tm'); if (!el) { clearInterval(S.timer); return; } const s = Math.floor((Date.now() - S.loop.t0) / 1000); el.textContent = Math.floor(s / 60) + ':' + p2(s % 60); }, 1000);
     render();
   },
-  loopCancel() { clearInterval(S.timer); go('hub'); },
+  ltype(e) { S.loop.type = e.dataset.v; render(); },
+  loopCancel() { if (!confirm('Cancel this loop? Nothing will be saved for it.')) return; clearInterval(S.timer); go('hub'); },
   linesUp() { clearInterval(S.timer); S.loop.end_ts = now(); PAD = null; S.screen = 'count'; render(); },
-  backToHub() { go('hub'); },
+  backToHub() { const typed = PAD && PAD.fields.some(f => f.val !== ''); if (!S.edit && typed && !confirm('Leave without saving this loop? The counts you typed will be lost. (Use Count later to keep the loop.)')) return; go('hub'); },
   focus(e) { PAD.focus(+e.dataset.i); },
   d(e) { PAD && PAD.key('d', e.dataset.v); }, bk() { PAD && PAD.key('bk'); }, next() { PAD && PAD.key('next'); }, dot() { PAD && PAD.key('dot'); },
-  async saveLoop() {
-    const L = S.loop, F = Object.fromEntries(PAD.fields.map(f => [f.key, f.val === '' ? null : +f.val])), tripId = S.tripId;
-    const deps = await activeDeps(tripId); let m, l;
-    if (S.perLine) { const mv = [F.A_M, F.B_M], lv = [F.A_L, F.B_L]; m = mv.every(x => x == null) ? null : mv.reduce((a, b) => a + (b || 0), 0); l = lv.every(x => x == null) ? null : lv.reduce((a, b) => a + (b || 0), 0); } else { m = F.M; l = F.L; }
-    if (m == null && l == null && !confirm('No counts entered. Save this loop as NOT COUNTED?')) return;
-    const v = await openVisit(tripId);
-    await put('loops', { loop_id: L.id, trip_id: tripId, area_visit_id: v && v.area_visit_id, seq: L.seq, loop_type: L.type, start_ts: L.start_ts, end_ts: L.end_ts, medium_count: m, large_count: l, male_count: null, female_count: null, count_status: (m == null && l == null) ? 'NOT_COUNTED' : 'COUNTED', loop_notes: null, size_basis: 'MEASURED' });
-    if (S.perLine) for (const d of deps) await put('loop_unit_counts', { id: L.id + '-' + d.unit_label, loop_id: L.id, trip_id: tripId, deployment_id: d.deployment_id, unit_label: d.unit_label, medium_count: F[d.unit_label + '_M'], large_count: F[d.unit_label + '_L'], count_status: (F[d.unit_label + '_M'] == null && F[d.unit_label + '_L'] == null) ? 'NOT_COUNTED' : 'COUNTED' });
+  async saveLoop(e) {
+    const later = !!(e.dataset && e.dataset.later), L = S.loop, tripId = S.tripId, units = S.units;
+    const F = Object.fromEntries(PAD.fields.map(f => [f.key, (later || f.val === '') ? null : +f.val])); let m, l;
+    if (units) { const mv = units.map(u => F[u + '_M']), lv = units.map(u => F[u + '_L']); m = mv.every(x => x == null) ? null : mv.reduce((a, b) => a + (b || 0), 0); l = lv.every(x => x == null) ? null : lv.reduce((a, b) => a + (b || 0), 0); } else { m = F.M; l = F.L; }
+    const nc = m == null && l == null;
+    if (nc && !later && !confirm('No counts entered. Save this loop as NOT COUNTED? (You can count it later from the trip screen.)')) return;
+    const rec = { loop_id: L.id, loop_type: L.type, medium_count: m, large_count: l, count_status: nc ? 'NOT_COUNTED' : 'COUNTED' };
+    if (!S.edit) { const v = await openVisit(tripId); Object.assign(rec, { trip_id: tripId, area_visit_id: v && v.area_visit_id, seq: L.seq, start_ts: L.start_ts, end_ts: L.end_ts, male_count: null, female_count: null, loop_notes: null, size_basis: 'MEASURED' }); }
+    await put('loops', rec);
+    if (units) for (const u of units) { const a = F[u + '_M'], b = F[u + '_L'];
+      await put('loop_unit_counts', { id: L.id + '-' + u, loop_id: L.id, trip_id: tripId, deployment_id: S.unitDeps[u], unit_label: u, medium_count: a, large_count: b, count_status: (a == null && b == null) ? 'NOT_COUNTED' : 'COUNTED' }); }
     go('hub');
+  },
+  async editLoop(e) {
+    const l = await getOne('loops', e.dataset.id), rows = live(await getAll('loop_unit_counts')).filter(r => r.loop_id === l.loop_id).sort((a, b) => a.unit_label < b.unit_label ? -1 : 1);
+    let units = null, init = {}, unitDeps = {};
+    if (rows.length) { units = rows.map(r => r.unit_label); rows.forEach(r => { init[r.unit_label + '_M'] = r.medium_count; init[r.unit_label + '_L'] = r.large_count; unitDeps[r.unit_label] = r.deployment_id; }); } else init = { M: l.medium_count, L: l.large_count };
+    PAD = null; S = { screen: 'count', edit: true, tripId: l.trip_id, units, unitDeps, init, loop: { id: l.loop_id, seq: l.seq, type: l.loop_type } }; render();
+  },
+  async undoLoop(e) {
+    if (!confirm('Undo (remove) the last loop? It is moved to the Trash, not erased.')) return;
+    await softDelete('loops', e.dataset.id);
+    for (const r of live(await getAll('loop_unit_counts')).filter(r => r.loop_id === e.dataset.id)) await softDelete('loop_unit_counts', r.id);
+    render();
   }
 });
 
 /* ================= MOVE LINES ================= */
 SCREENS.move = async () => {
-  const M = S.mv || (S.mv = { which: 'A', area_id: null, lines: { A: { spot: null, dir: null, deg: null }, B: { spot: null, dir: null, deg: null } } });
+  const dps = await activeDeps((await currentTrip()).trip_id), labels = dps.map(d => d.unit_label);
+  const M = S.mv || (S.mv = { which: labels[0] || 'A', area_id: null, lines: { A: { spot: null, dir: null, deg: null }, B: { spot: null, dir: null, deg: null } } });
+  if (M.which !== 'BOTH' && !labels.includes(M.which)) M.which = labels[0];
   const areas = live(await getAll('areas')).filter(isActive).sort((a, b) => a.name < b.name ? -1 : 1);
   const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === M.area_id).sort(bySpot), units = M.which === 'BOTH' ? ['A', 'B'] : [M.which];
   const sec = u => { const L = M.lines[u]; return `<div class="card"><h2>Line ${u} — new spot</h2><div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="mvSpot" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="MV${u}">+ Add new spot</button></div>${dirPicker('M', u, L)}</div>`; };
   return `<h1>Move lines</h1>${ACTION_BAR(`<button class="p big" data-a="doMove" ${M.area_id && units.every(u => M.lines[u].spot) ? '' : 'disabled'}>Move</button> <button data-a="go" data-s="hub">Cancel</button>`)}
- <div class="row">${['A', 'B', 'BOTH'].map(w => `<button class="${M.which === w ? 'sel' : ''}" data-a="mvWhich" data-v="${w}">${w === 'BOTH' ? 'Both lines' : 'Line ' + w}</button>`).join('')}</div>
+ <div class="row">${[...labels, ...(labels.length > 1 ? ['BOTH'] : [])].map(w => `<button class="${M.which === w ? 'sel' : ''}" data-a="mvWhich" data-v="${w}">${w === 'BOTH' ? 'Both lines' : 'Line ' + w}</button>`).join('')}</div>
  <h2>New area</h2><div class="row">${areas.map(a => `<button class="${M.area_id === a.area_id ? 'sel' : ''}" data-a="mvArea" data-id="${a.area_id}">${esc(a.name)}</button>`).join('')}</div>
  ${M.area_id ? units.map(sec).join('') : '<p class="mut">Pick the area to choose spots.</p>'}<p class="mut">Each line gets its own spot and direction.</p><!--ACT--><!--/ACT-->`;
 };
@@ -237,7 +315,7 @@ Object.assign(ACT, {
     for (const d of moving) {
       const nid = await nextChild(t.trip_id, 'D', 2), L = M.lines[d.unit_label], n = live(await getAll('deployments')).filter(x => x.trip_id === t.trip_id).length + 1;
       await put('deployments', { deployment_id: d.deployment_id, deploy_end_ts: t0, end_reason: 'MOVED', moved_to_deployment_id: nid });
-      await put('deployments', { deployment_id: nid, trip_id: t.trip_id, area_visit_id: vid, seq: n, unit_label: d.unit_label, equipment_type: d.equipment_type, line_length_ft: d.line_length_ft ?? null, location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: t0, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null });
+      await put('deployments', { deployment_id: nid, trip_id: t.trip_id, area_visit_id: vid, seq: n, unit_label: d.unit_label, equipment_type: d.equipment_type, line_length_ft: d.line_length_ft ?? null, snoods_per_line: d.snoods_per_line ?? null, trap_count: d.trap_count ?? null, trap_spacing_ft: d.trap_spacing_ft ?? null, trap_spacing_basis: d.trap_spacing_basis ?? null, bait_type: d.bait_type ?? null, bait_notes: d.bait_notes ?? null, location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: t0, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null });
     }
     S.mv = null; go('hub'); if (newVisit) conditionsDialog('visit');
   }
