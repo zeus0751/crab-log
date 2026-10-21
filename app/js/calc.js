@@ -44,3 +44,22 @@ function rangeWarn(variable, value, unit) {
   if (value < r[0] || value > r[1]) return `${r[2]} ${value} is outside the usual range ${r[0]} to ${r[1]}.`;
   return '';
 }
+
+/* ---- moon (calculated from date/time; approximate, Meeus low-precision terms) ---- */
+function moonInfo(date) {
+  const jd = date.getTime() / 86400000 + 2440587.5, T = (jd - 2451545) / 36525, r = Math.PI / 180, md = x => ((x % 360) + 360) % 360;
+  const D = md(297.8501921 + 445267.1114034 * T), M = md(357.5291092 + 35999.0502909 * T), Mp = md(134.9633964 + 477198.8675055 * T);
+  const i = 180 - D - 6.289 * Math.sin(Mp * r) + 2.100 * Math.sin(M * r) - 1.274 * Math.sin((2 * D - Mp) * r) - 0.658 * Math.sin(2 * D * r) - 0.214 * Math.sin(2 * Mp * r) - 0.110 * Math.sin(D * r);
+  const illum = Math.round((1 + Math.cos(i * r)) / 2 * 100), f = D / 360;
+  const name = f < 0.03 || f >= 0.97 ? 'New moon' : f < 0.22 ? 'Waxing crescent' : f < 0.28 ? 'First quarter' : f < 0.47 ? 'Waxing gibbous' : f < 0.53 ? 'Full moon' : f < 0.72 ? 'Waning gibbous' : f < 0.78 ? 'Last quarter' : 'Waning crescent';
+  return { illum, name };
+}
+/* ---- tide phase at a moment, from a trip's tide events [{type:'HIGH'|'LOW', date:Date}] ---- */
+function tidePhase(d, tides, slackMin = 30) {
+  const t = tides.filter(x => x.date).sort((a, b) => a.date - b.date); if (!t.length) return 'UNKNOWN';
+  if (t.some(x => Math.abs(x.date - d) <= slackMin * 60000)) return 'SLACK';
+  const prev = [...t].reverse().find(x => x.date <= d), next = t.find(x => x.date > d);
+  if (!prev || !next) return 'UNKNOWN';
+  return prev.type === 'HIGH' ? 'OUTGOING' : 'INCOMING';
+}
+const PHASE_LABEL = { INCOMING: 'Incoming', OUTGOING: 'Outgoing', SLACK: 'Slack', UNKNOWN: 'Unknown' };

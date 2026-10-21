@@ -141,6 +141,8 @@ Object.assign(ACT, {
     await put('trips', { trip_id: id, status: 'IN_PROGRESS', trip_date: tsDate(t0), depart_ts: t0, return_ts: null, engine_hours_start: eng, engine_hours_end: null, passengers: D.pass,
       weather_sky: null, wind_condition: null, water_condition: null, count_per_line: false, trip_notes: null, next_counters: {} });
     for (const [k, v] of [['AIR_TEMP_F', D.air], ['WATER_TEMP_F', D.water]]) if (v !== '') await addReading(id, null, Object.assign({ variable: k, value_num: +v, obs_ts: t0, context: 'AT_DOCK_DEPART' }, READ_DEF[k]));
+    const mo = moonInfo(tideDate(t0));
+    await addReading(id, null, { variable: 'MOON_ILLUM_PCT', value_num: mo.illum, value_text: mo.name, unit: '%', basis: 'CALCULATED', source: 'APP_CALC', obs_ts: t0, context: 'AT_DOCK_DEPART' });
     go('hub');
   },
   async crabStart() {
@@ -171,6 +173,7 @@ Object.assign(ACT, {
         trap_count: L.eq === 'TRAP' ? L.traps : null, trap_spacing_ft: L.eq === 'TRAP' ? L.spacing : null, trap_spacing_basis: L.eq === 'TRAP' ? 'ESTIMATED' : null, bait_type: L.bait, bait_notes: null,
         location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: tn, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null }); }
     await put('trips', { trip_id: t.trip_id, count_per_line: D.perLine });
+    const ar = await getOne('areas', D.area_id); if (ar && ar.tide_station_id) await fillTides(await getOne('trips', t.trip_id), ar.tide_station_id);
     go('hub'); conditionsDialog('full');
   },
   async finishCrabbing() {
@@ -180,6 +183,57 @@ Object.assign(ACT, {
     for (const d of await activeDeps(t.trip_id)) await put('deployments', { deployment_id: d.deployment_id, deploy_end_ts: t0, end_reason: 'PICKED_UP_FINAL' });
     await put('area_visits', { area_visit_id: v.area_visit_id, leave_ts: t0 });
     go('hub');
+  }
+});
+
+/* ================= TIDES AND MOON ================= */
+const STATIONS = [['8559957', 'Delaware (Fenwick Island)'], ['8570255', 'Ocean City, MD']];
+const stationName = id => (STATIONS.find(x => x[0] === id) || [0, id ? 'Station ' + id : 'not chosen'])[1];
+const tideDate = ts => tsToDate(ts);
+async function tidePred(station) { return station ? await metaGet('tides_' + station, null) : null; }
+const predDate = r => { const m = r[0].match(/(\d+)-(\d+)-(\d+) (\d+):(\d+)/); return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], 0); };
+async function tripTides(tripId) { return live(await getAll('tide_events')).filter(x => x.trip_id === tripId).sort((a, b) => a.tide_time < b.tide_time ? -1 : 1); }
+async function addTide(tripId, type, ts, source, station, basis) {
+  const all = live(await getAll('tide_events')).filter(x => x.trip_id === tripId), id = await nextChild(tripId, 'T', 1);
+  return put('tide_events', { tide_id: id, trip_id: tripId, seq: all.length + 1, tide_type: type, tide_time: ts, source, station: station || null, basis });
+}
+/* fill from stored predictions: the tide before departure and the next ones (count = how many after) */
+async function fillTides(trip, station) {
+  const P = await tidePred(station); if (!P) return 0;
+  const dep = tideDate(trip.depart_ts), rows = P.rows.map(r => ({ r, d: predDate(r) })), have = await tripTides(trip.trip_id);
+  const haveT = new Set(have.map(x => +tideDate(x.tide_time)));
+  let pick = []; const before = [...rows].reverse().find(x => x.d <= dep), after = rows.filter(x => x.d > dep).slice(0, 2);
+  if (!have.length) pick = [before, ...after].filter(Boolean); else { const last = tideDate(have[have.length - 1].tide_time); pick = rows.filter(x => x.d > last).slice(0, 1); }
+  let n = 0; for (const x of pick) { if (haveT.has(+x.d)) continue; await addTide(trip.trip_id, x.r[1] === 'H' ? 'HIGH' : 'LOW', mkTs(x.d), 'NOAA_PREDICTION', station, 'PREDICTED'); n++; }
+  return n;
+}
+async function slackMin() { return +(await metaGet('slack_window_min', 30)); }
+
+Object.assign(ACT, {
+  async tidesOpen() {
+    const t = await currentTrip(), v = await openVisit(t.trip_id), tides = await tripTides(t.trip_id), areaId = v ? v.area_id : (live(await getAll('area_visits')).filter(x => x.trip_id === t.trip_id).slice(-1)[0] || {}).area_id;
+    const area = areaId ? await getOne('areas', areaId) : null, st = area && area.tide_station_id, P = await tidePred(st);
+    modal(`<h2>Tides</h2>${area ? `<div class="row"><span class="mut chiplab">Station</span>${STATIONS.map(([c, l]) => `<button class="sm ${st === c ? 'sel' : ''}" data-a="setStation" data-id="${areaId}" data-v="${c}">${l}</button>`).join('')}</div><div class="mut">Saved for ${esc(area.name)} so tides fill in automatically next time.</div>` : '<div class="mut">Begin crabbing to choose a station for the area.</div>'}
+     <div class="card">${tides.length ? tides.map(x => `<div class="row"><span>${x.tide_type === 'HIGH' ? 'High' : 'Low'} ${tsDate(x.tide_time)} ${tsTime(x.tide_time)} <span class="mut">${x.basis === 'PREDICTED' ? 'predicted' : 'typed'}</span></span> <button class="sm danger" data-a="tideDel" data-id="${x.tide_id}">Remove</button></div>`).join('') : '<span class="mut">No tides stored for this trip.</span>'}</div>
+     <div class="row">${st && P ? `<button class="p big" data-a="tideFill">${tides.length ? 'Add next predicted tide' : 'Fill from predictions'}</button>` : `<span class="mut">${st ? 'No stored predictions for this station. Download them under Data &amp; backup (needs internet).' : ''}</span>`}
+     <button data-a="tideAdd" data-v="HIGH">Add High</button><button data-a="tideAdd" data-v="LOW">Add Low</button><button data-a="closeM">Close</button></div>`);
+  },
+  async setStation(e) { await put('areas', { area_id: e.dataset.id, tide_station_id: e.dataset.v }); ACT.tidesOpen(); },
+  async tideFill() { const t = await currentTrip(), v = await openVisit(t.trip_id), a = v && await getOne('areas', v.area_id); const n = a ? await fillTides(t, a.tide_station_id) : 0; closeModal(); if (!n) alert('No further predicted tide found.'); render(); },
+  async tideDel(e) { if (!confirm('Remove this tide from the trip?')) return; await softDelete('tide_events', e.dataset.id); ACT.tidesOpen(); },
+  async tideAdd(e) {
+    const t = await currentTrip(), type = e.dataset.v, d0 = new Date();
+    tsDialog((type === 'HIGH' ? 'High' : 'Low') + ' tide date and time', mkTs(d0), async ts => { const v = await openVisit(t.trip_id), a = v && await getOne('areas', v.area_id); await addTide(t.trip_id, type, ts, 'OTHER', a && a.tide_station_id, null); render(); });
+  },
+  async tidesDownload() {
+    const el = document.getElementById('tidemsg'), say = x => { if (el) el.textContent = x; }, d0 = new Date(), end = new Date(d0.getTime() + 360 * 86400000), f = d => `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`;
+    say('Downloading…');
+    try { for (const [id, name] of STATIONS) {
+      const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=CrabMetrics&begin_date=${f(new Date(d0.getTime() - 3 * 86400000))}&end_date=${f(end)}&datum=MLLW&station=${id}&time_zone=lst_ldt&units=english&interval=hilo&format=json`;
+      const r = await fetch(url), j = await r.json(); if (!j.predictions || !j.predictions.length) throw new Error('No predictions returned for ' + name);
+      await metaSet('tides_' + id, { fetched_at: now(), from: j.predictions[0].t.slice(0, 10), to: j.predictions[j.predictions.length - 1].t.slice(0, 10), rows: j.predictions.map(x => [x.t, x.type]) }); }
+      say('Done. Stored tide predictions for both stations.'); setTimeout(() => render(), 800);
+    } catch (e) { say('Download failed: ' + e.message + ' (needs an internet connection)'); }
   }
 });
 
@@ -194,13 +248,22 @@ SCREENS.hub = async () => {
   const sum = k => loops.some(l => l[k] != null) ? loops.reduce((a, l) => a + (l[k] || 0), 0) : null;
   const med = sum('medium_count'), lrg = sum('large_count'), tot = (med == null && lrg == null) ? null : (med || 0) + (lrg || 0);
   const visits = live(await getAll('area_visits')).filter(x => x.trip_id === t.trip_id), crabMin = visits.reduce((a, x) => a + (minutesBetween(x.arrive_ts, x.leave_ts || now()) || 0), 0);
+  const tides = await tripTides(t.trip_id), sl = await slackMin(), tdates = tides.map(x => ({ type: x.tide_type, date: tideDate(x.tide_time) }));
+  const moon = live(await getAll('readings')).find(r => r.trip_id === t.trip_id && r.variable === 'MOON_ILLUM_PCT');
+  const tide2 = tdates.find(x => x.date > tideDate(t.depart_ts)), lastTide = tdates.length ? tdates[tdates.length - 1].date : null;
+  const cs = l => (l.medium_count == null && l.large_count == null) ? 0 : (l.medium_count || 0) + (l.large_count || 0);
+  const before = tide2 ? loops.filter(l => tideDate(l.start_ts) < tide2.date && l.count_status !== 'NOT_COUNTED').reduce((a, l) => a + cs(l), 0) : null, after = tide2 ? loops.filter(l => tideDate(l.start_ts) >= tide2.date && l.count_status !== 'NOT_COUNTED').reduce((a, l) => a + cs(l), 0) : null;
   let h = `<h1>Trip ${t.trip_id}</h1>`;
   h += ACTION_BAR(v
-    ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="loopStart" data-type="PICKUP_FINAL">Pick-up loop</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
-    : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
+    ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="loopStart" data-type="PICKUP_FINAL">Pick-up loop</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="tidesOpen">Tides</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
+    : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="tidesOpen">Tides</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
   h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · ${v ? 'Crabbing at: ' + esc(await areaName(v.area_id)) : 'Not crabbing now'} · Loops: ${loops.length}<br>
    <b>Total crabs ${tot == null ? '—' : tot}</b> <span class="mut">(Medium ${med ?? '—'} · Large ${lrg ?? '—'} · calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
    <span class="mut">Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
+  h += `<div class="card"><b>Tides</b> <span class="mut">(${tides.length ? stationName(tides[0].station) : 'none stored'})</span>: ${tides.length ? tides.map(x => (x.tide_type === 'HIGH' ? 'High ' : 'Low ') + tsTime(x.tide_time) + (x.basis === 'PREDICTED' ? '' : '*')).join(' · ') : '—'}<br>
+   <b>Tide now: ${PHASE_LABEL[tidePhase(new Date(), tdates, sl)]}</b> <span class="mut">(calculated, slack = within ${sl} min of a tide)</span>${moon ? `<br><b>Moon ${moon.value_num}%</b> ${esc(moon.value_text || '')} <span class="mut">(calculated, approximate)</span>` : ''}
+   ${tide2 && loops.length ? `<br><span class="mut">Crabs before the tide change (${tsTime(mkTs(tide2.date))}): ${before} · after: ${after} (calculated)</span>` : ''}
+   ${t.status === 'IN_PROGRESS' && (!tdates.length || new Date() > lastTide) ? `<div class="warn">${tdates.length ? 'The last stored tide has passed.' : 'No tides stored for this trip.'} <button class="sm p" data-a="tidesOpen">Add tide</button></div>` : ''}</div>`;
   for (const e of openEv) h += `<div class="warn"><b>Event in progress: ${evLabel(e.event_type)}</b> since ${tsTime(e.start_ts)} (${fmtMin(minutesBetween(e.start_ts, now()))})${e.note ? ' — ' + esc(e.note) : ''} <button class="sm p" data-a="eventEnd" data-id="${e.event_id}">End event</button></div>`;
   for (const d of deps) {
     const sp = d.location_id ? await getOne('locations', d.location_id) : null, ft = pathFt(d), lp = linePath(sp, d, ft);
@@ -209,7 +272,7 @@ SCREENS.hub = async () => {
      ${lp ? `<div class="mut">Calculated end (${ft} ft, approximate): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain ? ' (±22° compass-point uncertainty)' : ''}</div>` : `<div class="mut">No spot coordinates or direction yet, so no line path.</div>`}</div>`;
   }
   if (t.trip_notes) h += `<div class="card"><b>Notes</b><br>${esc(t.trip_notes)}</div>`;
-  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Type</th><th>Time</th><th>Medium</th><th>Large</th><th></th></tr>` + loops.map((l, i) => `<tr><td>${l.seq}</td><td>${({ RUN: 'Run', PICKUP_MOVE: 'Pick-up (moving)', PICKUP_FINAL: 'Pick-up (final)' })[l.loop_type] || ''}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.medium_count ?? '—'}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.large_count ?? '—'}</td><td><button class="sm" data-a="editLoop" data-id="${l.loop_id}">${l.count_status === 'NOT_COUNTED' ? 'Count' : 'Edit'}</button>${i === loops.length - 1 ? ' <button class="sm danger" data-a="undoLoop" data-id="' + l.loop_id + '">Undo</button>' : ''}</td></tr>`).join('') + `</table>`;
+  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Type</th><th>Time</th><th>Tide</th><th>Medium</th><th>Large</th><th></th></tr>` + loops.map((l, i) => `<tr><td>${l.seq}</td><td>${({ RUN: 'Run', PICKUP_MOVE: 'Pick-up (moving)', PICKUP_FINAL: 'Pick-up (final)' })[l.loop_type] || ''}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${PHASE_LABEL[tidePhase(tideDate(l.start_ts), tdates, sl)]}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.medium_count ?? '—'}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.large_count ?? '—'}</td><td><button class="sm" data-a="editLoop" data-id="${l.loop_id}">${l.count_status === 'NOT_COUNTED' ? 'Count' : 'Edit'}</button>${i === loops.length - 1 ? ' <button class="sm danger" data-a="undoLoop" data-id="' + l.loop_id + '">Undo</button>' : ''}</td></tr>`).join('') + `</table>`;
   const done = evs.filter(e => e.end_ts);
   if (done.length) h += `<h2>Events</h2>` + done.map(e => `<div class="mut">${evLabel(e.event_type)} ${tsTime(e.start_ts)}–${tsTime(e.end_ts)} (${fmtMin(minutesBetween(e.start_ts, e.end_ts))})${e.note ? ' — ' + esc(e.note) : ''}</div>`).join('');
   S.afterRender = () => { clearInterval(S.tt); S.tt = setInterval(() => { const e = document.getElementById('ttime'); if (!e) { clearInterval(S.tt); return; } e.textContent = fmtMin(minutesBetween(t.depart_ts, now())); }, 20000); };
@@ -431,6 +494,8 @@ SCREENS.data = async () => {
  <button class="p big" data-a="backup">Save backup file</button> <button class="big" id="shareBtn" data-a="shareBackup" disabled>Share backup</button> <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
  <div id="msg" class="warn" style="display:none"></div>
  <div class="card"><b>Last backup:</b> ${lb ? lb.slice(0, 16) : 'none yet'}<br><b>Storage kept by Chrome:</b> <span id="persist">see Home after opening</span></div>
+ <div class="card"><b>Tide predictions (NOAA)</b><br>${(await Promise.all(STATIONS.map(async ([id, n]) => { const P = await tidePred(id); return `${n}: ${P ? 'stored through ' + P.to + ' (downloaded ' + P.fetched_at.slice(0, 10) + ')' : 'none stored'}`; }))).join('<br>')}<br>
+ <button class="sm" data-a="tidesDownload">Download / refresh (needs internet)</button> <span id="tidemsg" class="mut"></span></div>
  <div class="card"><b>Program version:</b> ${self.APP_VERSION}<br><button class="sm" data-a="chkUpdate">Check for update</button> <span id="updmsg" class="mut"></span></div>
  <div class="card"><b>Erase everything</b><br><span class="mut">Erases every trip, loop, count, area and spot on this tablet. A backup file is saved first.</span><br><button class="sm danger" data-a="eraseAll">Erase ALL data…</button></div>
  <h2>Trips (${trips.length})</h2><table><tr><th>Trip</th><th>Status</th><th>Loops</th></tr>${trips.map(t => `<tr><td>${t.trip_id}</td><td>${t.status === 'COMPLETED' ? 'finished' : 'open'}</td><td>${loops.filter(l => l.trip_id === t.trip_id).length}</td></tr>`).join('')}</table><!--ACT--><!--/ACT-->`;
