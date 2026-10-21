@@ -67,19 +67,24 @@ function numDialog(title, label, cur, opts, cb) {
   PAD.opts.buttons = [{ label: 'Clear', act: 'padClear' }];
 }
 SCREENS.start = async () => {
-  const D = S.draft, areas = live(await getAll('areas')).filter(isActive).sort((a, b) => a.name < b.name ? -1 : 1);
-  const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === D.area_id).sort(bySpot);
-  const line = u => { const L = D.lines[u]; return `<div class="card"><h2>Line ${u}</h2><div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="spotPick" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>${dirPicker('D', u, L)}</div>`; };
+  const D = S.draft;
   const box = (k, label, val, unit) => `<div class="fld sm" data-a="startField" data-k="${k}"><b>${label}</b><span>${val === '' || val == null ? '—' : esc(val)}</span>${unit ? `<small>${unit}</small>` : ''}</div>`;
-  return `<h1>Start trip</h1>${ACTION_BAR(`<button class="p big" data-a="beginTrip" ${D.area_id ? '' : 'disabled'}>Begin trip</button> <button data-a="go" data-s="home">Cancel</button>`)}
+  return `<h1>Begin trip (leaving the dock)</h1>${ACTION_BAR(`<button class="p big" data-a="beginTrip">Begin trip</button> <button data-a="go" data-s="home">Cancel</button>`)}
  <div class="row"><div class="fld sm wide" data-a="startField" data-k="depart"><b>Date / depart (edit)</b><span>${tsDate(D.depart)} ${tsTime(D.depart)}</span></div>
   ${box('eng', 'Engine hours start', D.eng, D.engHint ? 'last trip ended ' + D.engHint : '')}
   <div class="fld sm"><b>Passengers</b><span class="stp"><button class="sm" data-a="pass" data-v="-1">−</button> ${D.pass == null ? '—' : D.pass} <button class="sm" data-a="pass" data-v="1">+</button></span></div>
   ${box('air', 'Air temp', D.air, '°F')}${box('water', 'Water temp', D.water, '°F')}</div>
+ <p class="mut">Area, spots and lines are entered later, when you tap <b>Begin crabbing</b> on location.</p>`;
+};
+/* Begin crabbing: area, Line A/B spots and directions (on location) */
+SCREENS.crab = async () => {
+  const D = S.draft, areas = live(await getAll('areas')).filter(isActive).sort((a, b) => a.name < b.name ? -1 : 1);
+  const spots = live(await getAll('locations')).filter(l => isActive(l) && l.area_id === D.area_id).sort(bySpot);
+  const line = u => { const L = D.lines[u]; return `<div class="card"><h2>Line ${u}</h2><div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="spotPick" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>${dirPicker('D', u, L)}</div>`; };
+  return `<h1>Begin crabbing</h1>${ACTION_BAR(`<button class="p big" data-a="beginCrabbing" ${D.area_id ? '' : 'disabled'}>Begin crabbing</button> <button data-a="go" data-s="hub">Cancel</button>`)}
  <h2>Area</h2><div class="row">${areas.map(a => `<button class="${D.area_id === a.area_id ? 'sel' : ''}" data-a="areaPick" data-id="${a.area_id}">${esc(a.name)}</button>`).join('')}<button class="sm" data-a="addArea">+ Add new area</button></div>
  ${D.area_id ? line('A') + line('B') : '<p class="mut">Pick an area to choose spots.</p>'}
- <div class="card row"><button class="${D.perLine ? 'sel' : ''}" data-a="perLineToggle">Count each line separately: ${D.perLine ? 'ON' : 'OFF'}</button></div>
- <!--ACT--><!--/ACT-->`;
+ <div class="card row"><button class="${D.perLine ? 'sel' : ''}" data-a="perLineToggle">Count each line separately: ${D.perLine ? 'ON' : 'OFF'}</button></div>`;
 };
 function dirPicker(prefix, u, L) {
   return `<div class="row"><span class="mut">Direction:&nbsp;</span>${DIRS.map(d => `<button class="sm ${L.dir === d && L.deg == null ? 'sel' : ''}" data-a="dir" data-p="${prefix}" data-u="${u}" data-v="${d}">${d}</button>`).join('')}
@@ -96,9 +101,8 @@ Object.assign(ACT, {
   closeM() { closeModal(); },
   async startTrip() {
     const trips = live(await getAll('trips')).filter(t => t.engine_hours_end != null).sort((a, b) => a.trip_id < b.trip_id ? 1 : -1);
-    const last = trips[0], areas = live(await getAll('areas')).filter(isActive);
-    go('start', { draft: { depart: now(), eng: last ? String(last.engine_hours_end) : '', engHint: last ? String(last.engine_hours_end) : '', pass: null, air: '', water: '',
-      area_id: areas.length === 1 ? areas[0].area_id : null, lines: { A: { spot: null, dir: null, deg: null }, B: { spot: null, dir: null, deg: null } }, perLine: !!(await metaGet('count_per_line_default', false)) } });
+    const last = trips[0];
+    go('start', { draft: { depart: now(), eng: last ? String(last.engine_hours_end) : '', engHint: last ? String(last.engine_hours_end) : '', pass: null, air: '', water: '' } });
   },
   startField(e) {
     const D = S.draft, k = e.dataset.k;
@@ -107,7 +111,7 @@ Object.assign(ACT, {
     else numDialog(k === 'air' ? 'Air temperature °F' : 'Water temperature °F', '°F', D[k], { max: 3 }, v => { D[k] = v == null ? '' : v; render(); });
   },
   pass(e) { const D = S.draft, d = +e.dataset.v; D.pass = D.pass == null ? (d > 0 ? 1 : 0) : Math.max(0, Math.min(20, D.pass + d)); render(); },
-  async areaPick(e) { S.draft.area_id = e.dataset.id; S.draft.lines.A.spot = S.draft.lines.B.spot = null; render(); },
+  areaPick(e) { S.draft.area_id = e.dataset.id; S.draft.lines.A.spot = S.draft.lines.B.spot = null; render(); },
   async spotPick(e) { const L = S.draft.lines[e.dataset.u]; L.spot = e.dataset.id; await prefill(L, e.dataset.id); render(); },
   perLineToggle() { S.draft.perLine = !S.draft.perLine; render(); },
   dir(e) { const L = lineRef(e); L.dir = e.dataset.v; L.deg = null; L.auto = false; render(); },
@@ -118,16 +122,33 @@ Object.assign(ACT, {
     PAD.opts.onClear = () => { L.deg = null; L.auto = false; render(); };
   },
   async beginTrip() {
-    const D = S.draft, id = await nextTripId(), t0 = D.depart, tn = now();
-    const eng = D.eng === '' ? null : +D.eng, warn = [];
+    const D = S.draft, id = await nextTripId(), t0 = D.depart, eng = D.eng === '' ? null : +D.eng;
     await put('trips', { trip_id: id, status: 'IN_PROGRESS', trip_date: tsDate(t0), depart_ts: t0, return_ts: null, engine_hours_start: eng, engine_hours_end: null, passengers: D.pass,
-      weather_sky: null, wind_condition: null, water_condition: null, count_per_line: D.perLine, trip_notes: null, next_counters: {} });
-    const vid = await nextChild(id, 'V', 2);
-    await put('area_visits', { area_visit_id: vid, trip_id: id, seq: 1, area_id: D.area_id, arrive_ts: tn, leave_ts: null, stay_notes: null });
-    for (const u of ['A', 'B']) { const L = D.lines[u], did = await nextChild(id, 'D', 2);
-      await put('deployments', { deployment_id: did, trip_id: id, area_visit_id: vid, seq: u === 'A' ? 1 : 2, unit_label: u, equipment_type: 'TROTLINE', location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: tn, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null }); }
+      weather_sky: null, wind_condition: null, water_condition: null, count_per_line: false, trip_notes: null, next_counters: {} });
     for (const [k, v] of [['AIR_TEMP_F', D.air], ['WATER_TEMP_F', D.water]]) if (v !== '') await addReading(id, null, Object.assign({ variable: k, value_num: +v, obs_ts: t0, context: 'AT_DOCK_DEPART' }, READ_DEF[k]));
-    go('hub'); conditionsDialog('visit');
+    go('hub');
+  },
+  async crabStart() {
+    const areas = live(await getAll('areas')).filter(isActive);
+    go('crab', { draft: { area_id: areas.length === 1 ? areas[0].area_id : null, lines: { A: { spot: null, dir: null, deg: null }, B: { spot: null, dir: null, deg: null } }, perLine: !!(await metaGet('count_per_line_default', false)) } });
+  },
+  async beginCrabbing() {
+    const D = S.draft, t = await currentTrip(), tn = now(), n = live(await getAll('area_visits')).filter(v => v.trip_id === t.trip_id).length;
+    const vid = await nextChild(t.trip_id, 'V', 2);
+    await put('area_visits', { area_visit_id: vid, trip_id: t.trip_id, seq: n + 1, area_id: D.area_id, arrive_ts: tn, leave_ts: null, stay_notes: null });
+    const nd = live(await getAll('deployments')).filter(x => x.trip_id === t.trip_id).length;
+    let i = 0; for (const u of ['A', 'B']) { const L = D.lines[u], did = await nextChild(t.trip_id, 'D', 2);
+      await put('deployments', { deployment_id: did, trip_id: t.trip_id, area_visit_id: vid, seq: nd + (++i), unit_label: u, equipment_type: 'TROTLINE', location_id: L.spot, lay_heading: L.dir, lay_heading_deg: L.deg, heading_reference: 'UNKNOWN', deploy_start_ts: tn, deploy_end_ts: null, end_reason: null, moved_to_deployment_id: null }); }
+    await put('trips', { trip_id: t.trip_id, count_per_line: D.perLine });
+    go('hub'); conditionsDialog('full');
+  },
+  async finishCrabbing() {
+    const t = await currentTrip(), v = await openVisit(t.trip_id); if (!v) return;
+    if (!confirm('Finish crabbing? This records that the lines are picked up and you are heading back to the dock.')) return;
+    const t0 = now();
+    for (const d of await activeDeps(t.trip_id)) await put('deployments', { deployment_id: d.deployment_id, deploy_end_ts: t0, end_reason: 'PICKED_UP_FINAL' });
+    await put('area_visits', { area_visit_id: v.area_visit_id, leave_ts: t0 });
+    go('hub');
   }
 });
 
@@ -137,8 +158,10 @@ SCREENS.hub = async () => {
   const deps = await activeDeps(t.trip_id), loops = await tripLoops(t.trip_id), v = await openVisit(t.trip_id);
   const sum = k => loops.some(l => l[k] != null) ? loops.reduce((a, l) => a + (l[k] || 0), 0) : '—';
   let h = `<h1>Trip ${t.trip_id}</h1>`;
-  h += ACTION_BAR(`<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
-  h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · Area: ${esc(v ? await areaName(v.area_id) : '')} · Loops: ${loops.length}<br>
+  h += ACTION_BAR(v
+    ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
+    : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
+  h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · ${v ? 'Crabbing at: ' + esc(await areaName(v.area_id)) : 'Not crabbing now'} · Loops: ${loops.length}<br>
    <span class="mut">Calculated totals: Medium ${sum('medium_count')} · Large ${sum('large_count')} · Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
   for (const d of deps) {
     const sp = d.location_id ? await getOne('locations', d.location_id) : null, lp = linePath(sp, d, d.line_length_ft || 600);
@@ -233,7 +256,7 @@ async function conditionsDialog(mode) {
   CND = { mode, dir: null, sal: 'ppt', sky: t.weather_sky, windc: t.wind_condition, waterc: t.water_condition };
   const fields = [{ key: 'wind', label: 'Wind speed', unit: 'mph', max: 2 }, { key: 'depth', label: 'Depth', unit: 'ft', max: 3, decimal: true }, { key: 'depth2', label: 'Depth to', unit: 'ft', max: 3, decimal: true }];
   if (mode === 'full') fields.push({ key: 'air', label: 'Air temp', unit: '°F', max: 3 }, { key: 'water', label: 'Water temp', unit: '°F', max: 3 }, { key: 'sal', label: 'Salinity', max: 4, decimal: true });
-  padDialog({ title: mode === 'visit' ? 'Conditions at this area' : 'Conditions', fields, compact: true, extra: `<div id="chips">${chipsHTML(mode)}</div>`, okLabel: 'Save', buttons: mode === 'visit' ? [{ label: 'Skip', act: 'closeM' }] : [] });
+  padDialog({ title: mode === 'visit' ? 'Conditions at this area' : 'Conditions', fields, compact: true, extra: `<div id="chips">${chipsHTML(mode)}</div>`, okLabel: 'Save', buttons: [{ label: 'Skip', act: 'closeM' }] });
   PAD.opts.onOk = async v => {
     const warns = []; const t2 = await currentTrip(), vis = await openVisit(t2.trip_id), jobs = [];
     const add = (variable, val, extra) => { const w = rangeWarn(variable, val, (extra && extra.unit) || READ_DEF[variable].unit); if (w) warns.push(w); jobs.push(Object.assign({ variable }, READ_DEF[variable], extra, { value_num: val })); };
@@ -269,7 +292,7 @@ SCREENS.finish = async () => {
   const t = await currentTrip(), F = S.fin || (S.fin = { ret: now(), eng: '', gal: '', ppg: '', tot: '', vendor: '', notes: t.trip_notes || '', blanks: {} });
   const loops = await tripLoops(t.trip_id), nc = loops.filter(l => l.count_status === 'NOT_COUNTED').length, sum = k => loops.some(l => l[k] != null) ? loops.reduce((a, l) => a + (l[k] || 0), 0) : '—';
   const b = (k, label, val, unit) => `<div class="fld sm" data-a="finField" data-k="${k}"><b>${label}</b><span>${val === '' || val == null ? '—' : esc(val)}</span>${unit ? `<small>${unit}</small>` : ''}</div>`;
-  const warns = []; if (nc) warns.push(`${nc} loop${nc > 1 ? 's have' : ' has'} no count`);
+  const warns = []; if (await openVisit(t.trip_id)) warns.push('You did not tap Finish crabbing; lines will be closed at the return time'); if (nc) warns.push(`${nc} loop${nc > 1 ? 's have' : ' has'} no count`);
   return `<h1>Finish trip ${t.trip_id}</h1>
  <div class="row"><div class="fld sm wide" data-a="finField" data-k="ret"><b>Return time (edit)</b><span>${tsDate(F.ret)} ${tsTime(F.ret)}</span></div>${b('eng', 'Engine hours end', F.eng, t.engine_hours_start != null ? 'start ' + t.engine_hours_start : '')}</div>
  <div class="card"><b>Totals (calculated)</b> Loops ${loops.length} · Medium ${sum('medium_count')} · Large ${sum('large_count')} · Trip time ${fmtMin(minutesBetween(t.depart_ts, F.ret))}
@@ -304,7 +327,7 @@ Object.assign(ACT, {
     if (gal != null && gal <= 0) warns.push('Gallons should be more than 0.');
     if (gal != null && ppg != null && tot != null && Math.abs(Math.round(gal * ppg * 100) / 100 - tot) > 0.02) warns.push(`Total $${tot} does not match gallons × price ($${(Math.round(gal * ppg * 100) / 100).toFixed(2)}).`);
     if (warns.length && !confirm(warns.join('\n') + '\nComplete the trip anyway?')) return;
-    if (!confirm('Mark this trip complete? Lines still down will be closed.')) return;
+    if (!confirm('Mark this trip complete (back at the dock)? Any lines still down will be closed.')) return;
     const t0 = F.ret;
     for (const [k, st] of Object.entries(F.blanks)) {
       if (k === 'passengers' || k === 'engine_hours_end') await put('trips', { trip_id: t.trip_id, [k + '_status']: st });
