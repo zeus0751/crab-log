@@ -7,14 +7,14 @@ const DB_NAME = 'crabmetrics';
 const STORES = {
   meta: 'key', trips: 'trip_id', area_visits: 'area_visit_id', deployments: 'deployment_id', loops: 'loop_id',
   loop_unit_counts: 'id', readings: 'reading_id', fuel_purchases: 'fuel_id', tide_events: 'tide_id', events: 'event_id',
-  areas: 'area_id', locations: 'location_id', lookup_values: 'id'
+  areas: 'area_id', locations: 'location_id', lookup_values: 'id', edit_log: 'id'
 };
 const DATA_STORES = Object.keys(STORES).filter(s => s !== 'meta');
 let db = null;
 
 function openDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(DB_NAME, 1);
+    const r = indexedDB.open(DB_NAME, 2);
     r.onupgradeneeded = () => { for (const [s, k] of Object.entries(STORES)) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: k }); };
     r.onsuccess = () => { db = r.result; res(db); };
     r.onerror = () => rej(r.error);
@@ -54,6 +54,8 @@ async function put(store, rec, opts = {}) {
   if (!opts.quiet && typeof onSaved === 'function') onSaved();
   return full;
 }
+const hardDelete = (store, id) => tx(store, 'readwrite', x => x.objectStore(store).delete(id));
+const softDeleteAt = (store, id, ts) => put(store, { [STORES[store]]: id, deleted_at: ts }, { quiet: true });
 const softDelete = (store, id) => put(store, { [STORES[store]]: id, deleted_at: now() });
 
 /* ---- meta / settings ---- */
@@ -63,7 +65,8 @@ async function metaSet(key, value) { await tx('meta', 'readwrite', x => x.object
 /* ---- IDs (never reused; counters live on the trip) ---- */
 async function nextTripId() {
   const all = await getAll('trips'), d = (() => { const n = new Date(); return `${n.getFullYear()}${p2(n.getMonth() + 1)}${p2(n.getDate())}`; })();
-  return `${d}-${p2(all.filter(t => t.trip_id.startsWith(d + '-')).length + 1)}`;
+  const mx = Math.max(0, ...all.filter(t => t.trip_id.startsWith(d + '-')).map(t => +t.trip_id.slice(9)));
+  return `${d}-${p2(mx + 1)}`;
 }
 async function nextChild(tripId, kind, width) {
   const t = await getOne('trips', tripId), c = Object.assign({}, t.next_counters || {});

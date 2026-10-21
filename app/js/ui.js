@@ -44,6 +44,7 @@ SCREENS.home = async () => {
  ${t ? `<div class="card"><b>Trip in progress: ${t.trip_id}</b><br><button class="p big" data-a="go" data-s="hub">Resume trip</button></div>` : ''}
  ${!areas.length ? `<div class="warn">No areas yet. Go to <b>Data &amp; backup → Restore from file</b> to load your spot list, or add an area under <b>Areas &amp; spots</b>.</div>` : ''}
  <button class="p big" data-a="startTrip" ${t ? 'disabled' : ''}>Start trip</button>
+ <button class="big" data-a="go" data-s="history">History</button>
  <button class="big" data-a="go" data-s="data">Data &amp; backup</button>
  <button class="big" data-a="go" data-s="spots">Areas &amp; spots</button>
  <div class="card ${lb && days < 7 ? '' : 'warnbox'}"><span>${bk}</span></div>`;
@@ -324,7 +325,7 @@ Object.assign(ACT, {
   ltype(e) { S.loop.type = e.dataset.v; render(); },
   loopCancel() { if (!confirm('Cancel this loop? Nothing will be saved for it.')) return; clearInterval(S.timer); go('hub'); },
   linesUp() { clearInterval(S.timer); S.loop.end_ts = now(); PAD = null; S.screen = 'count'; render(); },
-  backToHub() { const typed = PAD && PAD.fields.some(f => f.val !== ''); if (!S.edit && typed && !confirm('Leave without saving this loop? The counts you typed will be lost. (Use Count later to keep the loop.)')) return; go('hub'); },
+  backToHub() { if (S.back) { go(S.back.screen, { tripId: S.back.tripId }); return; } const typed = PAD && PAD.fields.some(f => f.val !== ''); if (!S.edit && typed && !confirm('Leave without saving this loop? The counts you typed will be lost. (Use Count later to keep the loop.)')) return; go('hub'); },
   focus(e) { PAD.focus(+e.dataset.i); },
   d(e) { PAD && PAD.key('d', e.dataset.v); }, bk() { PAD && PAD.key('bk'); }, next() { PAD && PAD.key('next'); }, dot() { PAD && PAD.key('dot'); },
   async saveLoop(e) {
@@ -335,16 +336,17 @@ Object.assign(ACT, {
     if (nc && !later && !confirm('No counts entered. Save this loop as NOT COUNTED? (You can count it later from the trip screen.)')) return;
     const rec = { loop_id: L.id, loop_type: L.type, medium_count: m, large_count: l, count_status: nc ? 'NOT_COUNTED' : 'COUNTED' };
     if (!S.edit) { const v = await openVisit(tripId); Object.assign(rec, { trip_id: tripId, area_visit_id: v && v.area_visit_id, seq: L.seq, start_ts: L.start_ts, end_ts: L.end_ts, male_count: null, female_count: null, loop_notes: null, size_basis: 'MEASURED' }); }
+    if (S.edit && S.old) { const ch = {}; for (const k of ['loop_type', 'medium_count', 'large_count', 'count_status']) if ((S.old[k] ?? null) !== (rec[k] ?? null)) ch[k] = rec[k]; await logEdit('loops', S.old, ch); }
     await put('loops', rec);
     if (units) for (const u of units) { const a = F[u + '_M'], b = F[u + '_L'];
       await put('loop_unit_counts', { id: L.id + '-' + u, loop_id: L.id, trip_id: tripId, deployment_id: S.unitDeps[u], unit_label: u, medium_count: a, large_count: b, count_status: (a == null && b == null) ? 'NOT_COUNTED' : 'COUNTED' }); }
-    go('hub');
+    if (S.back) go(S.back.screen, { tripId: S.back.tripId }); else go('hub');
   },
   async editLoop(e) {
     const l = await getOne('loops', e.dataset.id), rows = live(await getAll('loop_unit_counts')).filter(r => r.loop_id === l.loop_id).sort((a, b) => a.unit_label < b.unit_label ? -1 : 1);
     let units = null, init = {}, unitDeps = {};
     if (rows.length) { units = rows.map(r => r.unit_label); rows.forEach(r => { init[r.unit_label + '_M'] = r.medium_count; init[r.unit_label + '_L'] = r.large_count; unitDeps[r.unit_label] = r.deployment_id; }); } else init = { M: l.medium_count, L: l.large_count };
-    PAD = null; S = { screen: 'count', edit: true, tripId: l.trip_id, units, unitDeps, init, loop: { id: l.loop_id, seq: l.seq, type: l.loop_type } }; render();
+    PAD = null; S = { screen: 'count', edit: true, back: e.dataset.back ? { screen: e.dataset.back, tripId: l.trip_id } : null, old: l, tripId: l.trip_id, units, unitDeps, init, loop: { id: l.loop_id, seq: l.seq, type: l.loop_type } }; render();
   },
   async undoLoop(e) {
     if (!confirm('Undo (remove) the last loop? It is moved to the Trash, not erased.')) return;
