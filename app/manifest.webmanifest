@@ -1,0 +1,17 @@
+{
+  "id": "/crab-log/app/",
+  "name": "CrabMetrics",
+  "short_name": "CrabMetrics",
+  "description": "Crabbing field data collection and analytics. Program files only; your data stays on this tablet.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0B3D91",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
