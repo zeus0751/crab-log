@@ -496,7 +496,7 @@ SCREENS.data = async () => {
   const trips = live(await getAll('trips')).sort((a, b) => a.trip_id < b.trip_id ? 1 : -1), loops = live(await getAll('loops')), lb = await metaGet('last_backup_at');
   S.afterRender = () => { setTimeout(prepShare, 300); const p = document.getElementById('persist'); if (p && navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(v => p.textContent = v ? 'protected (persistent)' : 'not guaranteed'); };
   return `<h1>Data &amp; backup</h1>${ACTION_BAR('<button data-a="go" data-s="home">Home</button>')}
- <button class="p big" data-a="backup">Save backup file</button> <button class="big" id="shareBtn" data-a="shareBackup" disabled>Share backup</button> <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
+ <button class="p big" data-a="backup">Save backup file</button> <button class="big" data-a="go" data-s="export">Export</button> <button class="big" id="shareBtn" data-a="shareBackup" disabled>Share backup</button> <button class="big" data-a="restorePick">Restore from file</button><input type="file" id="rf" accept=".json,application/json" style="display:none">
  <div id="msg" class="warn" style="display:none"></div>
  <div class="card"><b>Last backup:</b> ${lb ? lb.slice(0, 16) : 'none yet'}<br><b>Storage kept by Chrome:</b> <span id="persist">see Home after opening</span></div>
  <div class="card"><b>Tide predictions (NOAA)</b><br>${(await Promise.all(STATIONS.map(async ([id, n]) => { const P = await tidePred(id); return `${n}: ${P ? 'stored through ' + P.to + ' (downloaded ' + P.fetched_at.slice(0, 10) + ')' : 'none stored'}`; }))).join('<br>')}<br>
@@ -521,10 +521,13 @@ Object.assign(ACT, {
 async function restoreFile(file) {
   let j; try { j = JSON.parse(await file.text()); } catch (e) { msg('That file could not be read as a backup.'); return; }
   const plan = await planRestore(j); if (!plan) { msg('This is not a CrabMetrics backup or spot-list file.'); return; }
-  const txt = `File has ${plan.total} records: ${plan.nDup} already here (${plan.nDiff} of those differ from what is here and will be left as they are); ${plan.nAdd} would be added. Existing records are never overwritten.${plan.note ? '\n' + plan.note : ''}\nAdd them?`;
-  if (!confirm(txt)) return;
-  await applyRestore(plan); onSaved(); msg(`Restore done: ${plan.nAdd} added, ${plan.nDup} skipped (already present).`);
+  const rows = Object.keys(plan.add).filter(k => plan.add[k].length + plan.dup[k] > 0).map(k => `<tr><td>${k.replace(/_/g, ' ')}</td><td>${plan.add[k].length + plan.dup[k]}</td><td><b>${plan.add[k].length}</b></td><td>${plan.dup[k]}</td><td>${plan.diff[k]}</td></tr>`).join('');
+  S.plan = plan;
+  modal(`<h2>Restore preview</h2><p>${plan.total} records in the file. <b>${plan.nAdd}</b> are new and would be added. <b>${plan.nDup}</b> already exist here and will be skipped${plan.nDiff ? ` (<b>${plan.nDiff}</b> of those differ from what is here; the copy here is kept, nothing is overwritten)` : ''}.</p>${plan.note ? `<p class="mut">${esc(plan.note)}</p>` : ''}
+   <table><tr><th>Table</th><th>In file</th><th>New</th><th>Already here</th><th>Differ</th></tr>${rows}</table>
+   <div class="row" style="margin-top:8px"><button class="p big" data-a="restoreGo" ${plan.nAdd ? '' : 'disabled'}>Add ${plan.nAdd} new records</button><button data-a="closeM">Cancel</button></div>`);
 }
+ACT.restoreGo = async () => { const plan = S.plan; closeModal(); await applyRestore(plan); onSaved(); msg(`Restore done: ${plan.nAdd} added, ${plan.nDup} skipped (already present).`); };
 
 /* ================= AREAS & SPOTS ================= */
 SCREENS.spots = async () => {

@@ -71,12 +71,12 @@ SCREENS.history = async () => {
   const trips = live(await getAll('trips')).sort((a, b) => a.trip_id < b.trip_id ? 1 : -1), loops = live(await getAll('loops')), visits = live(await getAll('area_visits')), areas = Object.fromEntries((await getAll('areas')).map(a => [a.area_id, a.name]));
   const trash = (await trashItems()).length;
   const rows = trips.map(t => {
-    const ls = loops.filter(l => l.trip_id === t.trip_id), m = ls.some(l => l.medium_count != null) ? ls.reduce((a, l) => a + (l.medium_count || 0), 0) : null, lg = ls.some(l => l.large_count != null) ? ls.reduce((a, l) => a + (l.large_count || 0), 0) : null;
-    const tot = (m == null && lg == null) ? '—' : (m || 0) + (lg || 0), an = [...new Set(visits.filter(v => v.trip_id === t.trip_id).map(v => areas[v.area_id]).filter(Boolean))].join(', ');
-    return `<tr><td><b>${t.trip_id}</b></td><td>${t.status === 'COMPLETED' ? 'finished' : '<b>open</b>'}</td><td>${esc(an) || '—'}</td><td>${ls.length}</td><td>${tot}</td><td>${t.return_ts ? fmtMin(minutesBetween(t.depart_ts, t.return_ts)) : '—'}</td><td><button class="sm p" data-a="openTrip" data-id="${t.trip_id}">Open</button></td></tr>`;
+    const ls = loops.filter(l => l.trip_id === t.trip_id), keep = tripKeepers(t, ls), an = [...new Set(visits.filter(v => v.trip_id === t.trip_id).map(v => areas[v.area_id]).filter(Boolean))].join(', ');
+    const sent = t.master_exported_at ? (tripChangedSimple(t, ls) ? 'changed' : '✔') : '—';
+    return `<tr><td><b>${t.trip_id}</b></td><td>${t.status === 'COMPLETED' ? 'finished' : '<b>open</b>'}</td><td>${esc(an) || '—'}</td><td>${ls.length || '—'}</td><td>${keep ?? '—'}</td><td>${t.return_ts ? fmtMin(minutesBetween(t.depart_ts, t.return_ts)) : '—'}</td><td>${sent}</td><td><button class="sm p" data-a="openTrip" data-id="${t.trip_id}">Open</button></td></tr>`;
   }).join('');
   return `<h1>History</h1>${ACTION_BAR('<button data-a="go" data-s="home">Home</button> <button data-a="go" data-s="trash">Trash (' + trash + ')</button>')}
- ${trips.length ? `<table><tr><th>Trip</th><th>Status</th><th>Area</th><th>Loops</th><th>Crabs</th><th>Time</th><th></th></tr>${rows}</table><p class="mut">Crabs = Medium + Large, calculated. Time = depart to return.</p>` : '<p>No trips yet.</p>'}<!--ACT--><!--/ACT-->`;
+ ${trips.length ? `<table><tr><th>Trip</th><th>Status</th><th>Area</th><th>Loops</th><th>Crabs</th><th>Time</th><th>In master</th><th></th></tr>${rows}</table><p class="mut">Crabs = calculated from the loops (Medium + Large, or male + female for old history; imported trips without loops show the total you typed). Time = depart to return. In master: ✔ sent, changed = edited since sent, — not sent.</p>` : '<p>No trips yet.</p>'}<!--ACT--><!--/ACT-->`;
 };
 
 /* ---------- trip detail ---------- */
@@ -192,3 +192,5 @@ Object.assign(ACT, {
     render();
   }
 });
+
+function tripChangedSimple(t, ls) { const ex = +tsToDate(t.master_exported_at); return ls.some(l => l.updated_at && +tsToDate(l.updated_at) > ex + 1000) || (t.updated_at && +tsToDate(t.updated_at) > ex + 3000); }
