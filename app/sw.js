@@ -6,7 +6,7 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './css/app.css',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/logo-160.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
   // Not calling skipWaiting(): a new version waits until you tap "Apply update".
 });
 self.addEventListener('activate', (e) => {
