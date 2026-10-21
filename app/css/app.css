@@ -37,7 +37,7 @@ input[type=text],textarea{-webkit-user-select:text;user-select:text;font:inherit
 .tm{font-size:64px;font-weight:800;text-align:center;margin:10px 0}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #999;padding:6px;text-align:left;font-size:19px}
 
-.dot{grid-column:1/-1}
+.dot{grid-column:1/-1;min-height:48px!important}
 button:disabled{opacity:.4}
 .warnbox{background:#FFF3CD}
 small{display:block;font-size:16px}
@@ -45,3 +45,16 @@ small{display:block;font-size:16px}
 .chiplab{min-width:110px}
 .fld.wide{min-width:240px}
 label{display:block;font-weight:700;margin-top:8px;font-size:19px}
+
+.botbar{margin:10px 0}
+.dgc{grid-template-columns:1fr minmax(210px,300px);gap:6px 10px}
+.dgc .dg-x{grid-column:1/-1}
+.dgc .fld{min-width:0;flex:1 1 28%;min-height:58px;padding:2px 6px;margin:3px}
+.dgc .fld span{font-size:30px}.dgc .fld b{font-size:14px}
+.dgc .dg-p .pad button{min-height:54px;font-size:28px}
+.dgc button.big{min-height:60px;font-size:22px}
+.dgc .row button.sm{min-height:40px;font-size:16px;min-width:44px;padding:2px 8px;margin:2px}
+.dgc .chiplab{min-width:90px;font-size:16px}
+@media (max-aspect-ratio:1/1){.dgc{grid-template-columns:1fr minmax(190px,240px)}}
+.dgc .fld{height:84px}
+.dgc .dg-p .pad button{font-size:24px;padding:4px}

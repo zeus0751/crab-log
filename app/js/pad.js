@@ -17,7 +17,7 @@ class PadEngine {
 function padHTML(withDot) {
   return `<div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-a="d" data-v="${n}">${n}</button>`).join('')}
  <button data-a="bk" aria-label="delete">⌫</button><button data-a="d" data-v="0">0</button><button class="p" data-a="next">NEXT</button>
- ${withDot ? '<button class="dot" data-a="dot">. (decimal point)</button>' : ''}</div>`;
+ ${withDot ? '<button class="dot" data-a="dot">.</button>' : ''}</div>`;
 }
 function fieldBoxes(eng, pfx) {
   return eng.fields.map((f, i) => `<div class="fld ${i === eng.active ? 'act' : ''}" data-a="focus" data-i="${i}"><b>${esc(f.label)}</b><span>${f.val === '' ? '—' : esc(f.val)}</span>${f.unit ? `<small>${esc(f.unit)}</small>` : ''}</div>`).join('');
@@ -29,8 +29,8 @@ function padDialog(opts) {
   const paint = () => { const c = document.getElementById('pdf'); if (c) c.innerHTML = fieldBoxes(PAD); };
   PAD = new PadEngine(fields, paint);
   PAD.opts = opts;
-  modal(`<div class="dg"><div class="dg-l"><h2 style="margin:0 0 6px">${opts.title}</h2><div class="row" id="pdf">${fieldBoxes(PAD)}</div>${opts.extra || ''}
+  modal(`<div class="dg ${opts.compact ? 'dgc' : ''}"><div class="dg-l"><h2 style="margin:0 0 6px">${opts.title}</h2><div class="row" id="pdf">${fieldBoxes(PAD)}</div>${opts.compact ? '' : opts.extra || ''}
   <div class="row" style="margin-top:8px"><button class="p big" data-a="padOk">${opts.okLabel || 'OK'}</button>${(opts.buttons || []).map(b => `<button class="${b.cls || ''}" data-a="${b.act}">${b.label}</button>`).join('')}<button data-a="closeM">Cancel</button></div></div>
-  <div class="dg-p">${padHTML(withDot)}</div></div>`);
+  <div class="dg-p">${padHTML(withDot)}</div>${opts.compact ? '<div class="dg-x">' + (opts.extra || '') + '</div>' : ''}</div>`);
 }
 function padValues() { return Object.fromEntries(PAD.fields.map(f => [f.key, f.val === '' ? null : f.val])); }

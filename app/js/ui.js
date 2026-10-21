@@ -9,8 +9,8 @@ function go(screen, extra) { PAD = null; S = Object.assign({ screen }, extra || 
 async function render() {
   document.getElementById('ver').textContent = 'v' + self.APP_VERSION;
   let h = await SCREENS[S.screen]();
-  const m = h.match(/<!--ACT-->([\s\S]*?)<!--\/ACT-->/);
-  if (m) { const i = h.indexOf('</h1>'); if (i >= 0) h = h.slice(0, i + 5) + '<div class="topbar">' + m[1] + '</div>' + h.slice(i + 5); }
+  const m = h.match(/<!--ACT-->([\s\S]*?)<!--\/ACT-->/g), bar = m && m.map(x => x.replace(/<!--\/?ACT-->/g, '')).find(x => x.trim());
+  if (m) { h = h.replace(/<!--ACT-->[\s\S]*?<!--\/ACT-->/g, ''); if (bar) { const i = h.indexOf('</h1>'); h = (i >= 0 ? h.slice(0, i + 5) + '<div class="topbar">' + bar + '</div>' + h.slice(i + 5) : h) + '<div class="botbar">' + bar + '</div>'; } }
   app().innerHTML = h;
   if (S.afterRender) S.afterRender();
 }
@@ -231,9 +231,9 @@ function chipsHTML(mode) {
 async function conditionsDialog(mode) {
   const t = await currentTrip(); if (!t) return;
   CND = { mode, dir: null, sal: 'ppt', sky: t.weather_sky, windc: t.wind_condition, waterc: t.water_condition };
-  const fields = [{ key: 'wind', label: 'Wind speed', unit: 'mph', max: 2 }, { key: 'depth', label: 'Depth', unit: 'ft', max: 3, decimal: true }, { key: 'depth2', label: 'Depth to (range, optional)', unit: 'ft', max: 3, decimal: true }];
+  const fields = [{ key: 'wind', label: 'Wind speed', unit: 'mph', max: 2 }, { key: 'depth', label: 'Depth', unit: 'ft', max: 3, decimal: true }, { key: 'depth2', label: 'Depth to', unit: 'ft', max: 3, decimal: true }];
   if (mode === 'full') fields.push({ key: 'air', label: 'Air temp', unit: '°F', max: 3 }, { key: 'water', label: 'Water temp', unit: '°F', max: 3 }, { key: 'sal', label: 'Salinity', max: 4, decimal: true });
-  padDialog({ title: mode === 'visit' ? 'Conditions at this area' : 'Conditions', fields, extra: `<div id="chips">${chipsHTML(mode)}</div>`, okLabel: 'Save', buttons: mode === 'visit' ? [{ label: 'Skip', act: 'closeM' }] : [] });
+  padDialog({ title: mode === 'visit' ? 'Conditions at this area' : 'Conditions', fields, compact: true, extra: `<div id="chips">${chipsHTML(mode)}</div>`, okLabel: 'Save', buttons: mode === 'visit' ? [{ label: 'Skip', act: 'closeM' }] : [] });
   PAD.opts.onOk = async v => {
     const warns = []; const t2 = await currentTrip(), vis = await openVisit(t2.trip_id), jobs = [];
     const add = (variable, val, extra) => { const w = rangeWarn(variable, val, (extra && extra.unit) || READ_DEF[variable].unit); if (w) warns.push(w); jobs.push(Object.assign({ variable }, READ_DEF[variable], extra, { value_num: val })); };
