@@ -130,7 +130,7 @@ function analysisTables(g) {
 const README_TXT = `CrabMetrics export
 ==================
 Files in this ZIP (see manifest.csv for the row counts):
-- master_trips.csv / master_loops.csv : same columns and order as the Trips and Loops sheets of the master workbook. Formula columns are left empty. Paste the rows under the last row of the master, then fill the formulas down.
+- master_trips.csv / master_loops.csv : same columns and order as the Trips and Loops sheets of the master workbook. Formula columns are left empty on purpose. Paste into the first empty row of the master using Paste Special > Skip blanks so the master's own formulas stay.
 - trips_analysis.csv / loops_analysis.csv : one flat row per trip / per loop with calculated fields (names start with calc_) for analysis.
 - One CSV per stored table (trips, area_visits, deployments, loops, loop_unit_counts, readings, events, tide_events, fuel_purchases, edit_log) with every stored field. Tables link by trip_id and the IDs inside each file.
 - areas.csv and locations.csv : your area and spot lists (all areas and spots are included in every export).
@@ -167,10 +167,10 @@ async function exportZip(scope) {
 async function exportXlsx(scope) {
   const { g, trips } = await buildExport(scope), mt = trips.map(t => masterTripRow(g, t)), ml = trips.flatMap(t => masterLoopRows(g, t));
   const note = [['HOW TO PASTE INTO THE MASTER WORKBOOK'], ['1. Open the master workbook and this file side by side.'],
-    ['2. On this file\'s Trips tab, select the data rows (not the header row), copy them, and paste into the first empty row of the master Trips tab, column A.'],
-    ['3. Do the same for the Loops tab into the master Loops tab.'],
-    ['4. The formula columns are empty here on purpose. In the master Trips tab select the formula cells of the last OLD row down through the new rows (columns B, E, F, I, L and AN to AR; hold Cmd/Ctrl to select several blocks) and press Cmd+D (Mac) or Ctrl+D (Windows). Do the same for column G in the Loops tab.'],
-    ['5. For trips from this app, Loops column G (count_total) should add medium_count and large_count: =IF(AND(E2="",F2="",I2="",J2=""),"",N(E2)+N(F2)+N(I2)+N(J2)). Change it once in the master and fill it down the whole column.'],
+    ['2. On this file\'s Trips tab, select the data rows (not the header row) and copy them. In the master Trips tab click cell A in the first empty row (the first row where column A is blank).'],
+    ['3. Paste with SKIP BLANKS so the master\'s formulas are kept: Edit > Paste Special > tick "Skip blanks" > OK. Shortcut: Mac Cmd+Ctrl+V, Windows Ctrl+Alt+V. Do NOT use a plain paste.'],
+    ['4. Do the same for the Loops tab (copy from this file\'s Loops tab, paste with Skip blanks into the first empty row of the master Loops tab).'],
+    ['5. The master (version with pre-filled formulas) fills in columns B, E, F, I, L, AN to AR and Loops column G by itself. Nothing to fill down.'],
     ['6. Back in CrabMetrics, tap "Mark these trips as sent to master".'], ['Exported ' + now() + ' by CrabMetrics ' + self.APP_VERSION + ' · ' + trips.length + ' trips, ' + ml.length + ' loops.']];
   const blob = makeXlsx([{ name: 'Trips', cols: MASTER_TRIP_COLS, rows: mt }, { name: 'Loops', cols: MASTER_LOOP_COLS, rows: ml }, { name: 'How to paste', cols: ['Instructions'], rows: note }]);
   return { blob, name: `crabmetrics-master-paste-${stamp()}.xlsx`, trips, counts: { trips: mt.length, loops: ml.length }, ok: true, bad: [] };
