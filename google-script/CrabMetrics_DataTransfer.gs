@@ -6,13 +6,14 @@
  * Actions: ping, plan (preview, changes nothing), commit (writes), read (for the app's own verification).
  */
 const SECRET = 'PASTE-YOUR-KEY-HERE';          // must equal the key shown in CrabMetrics > Settings > Data Transfer
-const SCRIPT_VERSION = '1.0';
+const SCRIPT_VERSION = '1.1';
 const SHEETS = {
   Trips: {
     key: 'trip_id',
     formula: ['season', 'month', 'day_of_season', 'duration_hours', 'engine_hours_used', 'loops_recorded', 'keepers_from_loops', 'loops_minus_typed', 'keepers_per_hour', 'season_cumulative_keepers'],
     date: ['trip_date'], time: ['depart_time', 'return_time', 'tide1_time', 'tide2_time', 'tide3_time'],
     num: ['engine_hours_start', 'engine_hours_end', 'passengers', 'air_temp_f', 'water_temp_f', 'depth_min_ft', 'depth_max_ft', 'moon_pct', 'line_count', 'line_length_ft', 'trap_count', 'keepers_typed', 'male_typed', 'female_typed'],
+    numFmt: { depth_min_ft: '0.0', depth_max_ft: '0.0' },   // one decimal, like the earlier entries
     probe: 'season'
   },
   Loops: {
@@ -20,6 +21,7 @@ const SHEETS = {
     formula: ['count_total'],
     date: [], time: ['start_time'],
     num: ['seq', 'count_male', 'count_female', 'medium_count', 'large_count'],
+    numFmt: {},
     probe: 'count_total'
   }
 };
@@ -135,7 +137,8 @@ function writeRow(S, rowNum, obj) {
   S.headers.forEach((h, j) => { if (def.formula.includes(h) || h === '' || !(h in obj)) { cur = null; return; } if (!cur) { cur = []; runs.push(cur); } cur.push({ h, j }); });
   for (const run of runs) {
     const rng = S.sh.getRange(rowNum, run[0].j + 1, 1, run.length);
-    rng.setNumberFormats([run.map(c => def.date.includes(c.h) ? 'yyyy-mm-dd' : def.time.includes(c.h) ? 'hh:mm' : def.num.includes(c.h) ? 'General' : '@')]);
+    const cur = rng.getNumberFormats()[0];   // keep a number format already in the sheet; otherwise use ours
+    rng.setNumberFormats([run.map((c, k) => def.date.includes(c.h) ? 'yyyy-mm-dd' : def.time.includes(c.h) ? 'hh:mm' : def.num.includes(c.h) ? ((cur[k] && cur[k] !== 'General') ? cur[k] : (def.numFmt[c.h] || 'General')) : '@')]);
     rng.setValues([run.map(c => toCell(def, c.h, obj[c.h]))]);
   }
 }

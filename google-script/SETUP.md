@@ -1,6 +1,6 @@
 ---
 title: "CrabMetrics Data Transfer: Setup Guide"
-subtitle: "Google Sheet + Apps Script, version 1.0 (app 1.0.0-g1)"
+subtitle: "Google Sheet + Apps Script, script version 1.1 (app 1.0.0-g1)"
 date: "October 23, 2026"
 ---
 
@@ -64,3 +64,12 @@ After **any change to the script** you must **Deploy → Manage deployments → 
 # Privacy and limits
 
 The web address and key are stored only on the tablet. They are not in backup files or on GitHub. Anyone who had both could add trips to the sheet, so do not share them. Transfers need internet; recording trips does not. If you ever distribute the app, each user would need their own sheet and script, or the design would have to change.
+
+# Script change log
+
+| Script version | Change |
+|---|---|
+| 1.0 | First version |
+| 1.1 | Depth columns keep one decimal (3.0), like earlier entries. The script also keeps any number format already set in the sheet |
+
+**To install a new script version:** open Extensions → Apps Script, select all, paste the new file, set your key again on the `SECRET` line, save, then **Deploy → Manage deployments → pencil icon → Version: New version → Deploy**. The web address stays the same.
