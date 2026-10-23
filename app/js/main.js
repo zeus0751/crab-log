@@ -51,7 +51,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 (async () => {
-  await openDB();
+  await openDB(); await loadLists();
   let persisted = false;
   if (navigator.storage && navigator.storage.persist) { try { persisted = await navigator.storage.persist(); } catch (e) {} }
   netBar(); await render();

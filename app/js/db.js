@@ -9,6 +9,7 @@ const STORES = {
   loop_unit_counts: 'id', readings: 'reading_id', fuel_purchases: 'fuel_id', tide_events: 'tide_id', events: 'event_id',
   areas: 'area_id', locations: 'location_id', lookup_values: 'id', edit_log: 'id'
 };
+const RESTORE_META = ['count_per_line_default', 'default_trap_spacing_ft', 'slack_window_min', 'home_zip', 'lists_custom', 'spot_merges'];
 const DATA_STORES = Object.keys(STORES).filter(s => s !== 'meta');
 let db = null;
 
@@ -103,7 +104,7 @@ async function planRestore(j) {
     plan.add[s] = []; plan.dup[s] = 0; plan.diff[s] = 0;
     for (const r of rows) {
       plan.total++;
-      if (s === 'meta' && r.key !== 'count_per_line_default' && r.key !== 'default_trap_spacing_ft') { plan.total--; continue; }
+      if (s === 'meta' && !RESTORE_META.includes(r.key)) { plan.total--; continue; }
       const h = have.get(r[kp]);
       if (!h) plan.add[s].push(r); else { plan.dup[s]++; const a = Object.assign({}, h), b = Object.assign({}, r); for (const k of ['updated_at', 'edit_count']) { delete a[k]; delete b[k]; } if (JSON.stringify(a) !== JSON.stringify(b)) plan.diff[s]++; }
     }

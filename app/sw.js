@@ -2,7 +2,7 @@
 importScripts('js/version.js');
 const CACHE = 'crabmetrics-cache-' + self.APP_VERSION;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './css/app.css',
-  './js/version.js', './js/db.js', './js/calc.js', './js/pad.js', './js/ui.js', './js/history.js', './js/export.js', './js/main.js',
+  './js/version.js', './js/db.js', './js/calc.js', './js/pad.js', './js/ui.js', './js/history.js', './js/export.js', './js/settings.js', './js/main.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/logo-160.png'];
 
 self.addEventListener('install', (e) => {

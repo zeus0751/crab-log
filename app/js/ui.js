@@ -47,6 +47,7 @@ SCREENS.home = async () => {
  <button class="big" data-a="go" data-s="history">History</button>
  <button class="big" data-a="go" data-s="data">Data &amp; backup</button>
  <button class="big" data-a="go" data-s="spots">Areas &amp; spots</button>
+ <button class="big" data-a="go" data-s="settings">Settings</button>
  <div class="card ${lb && days < 7 ? '' : 'warnbox'}"><span>${bk}</span></div>`;
 };
 
@@ -94,10 +95,10 @@ SCREENS.crab = async () => {
     if (!L.use) return `<div class="card"><h2>Line ${u}</h2><span class="mut">Not used on this trip.</span> <button class="sm" data-a="useLine" data-u="${u}">Use Line ${u}</button></div>`;
     return `<div class="card"><h2>Line ${u} ${D.lines[u === 'A' ? 'B' : 'A'].use ? `<button class="sm" data-a="useLine" data-u="${u}">Not using</button>` : ''}</h2>
  <div class="row">${spots.map(s => `<button class="${L.spot === s.location_id ? 'sel' : ''}" data-a="spotPick" data-u="${u}" data-id="${s.location_id}">${esc(s.name)}</button>`).join('')}<button class="sm" data-a="addSpot" data-u="${u}">+ Add new spot</button></div>${dirPicker('D', u, L)}
- <div class="row"><span class="mut chiplab">Gear</span>${EQS.map(([c, l]) => `<button class="sm ${L.eq === c ? 'sel' : ''}" data-a="eq" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div>
+ <div class="row"><span class="mut chiplab">Gear</span>${onlyActive(EQS).map(([c, l]) => `<button class="sm ${L.eq === c ? 'sel' : ''}" data-a="eq" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div>
  ${L.eq === 'TROTLINE' ? `<div class="row">${gearBox(u, 'len', 'Length', L.len, 'ft · about ' + Math.round(L.len / 6) + ' snoods (calculated)')}</div>`
    : L.eq === 'TRAP' ? `<div class="row">${gearBox(u, 'traps', 'Traps in string', L.traps, '')}${gearBox(u, 'spacing', 'Spacing (estimate)', L.spacing, 'ft')}<span class="mut">String ≈ ${stringFt(L)} ft (calculated)</span></div>` : ''}
- <div class="row"><span class="mut chiplab">Bait</span>${BAITS.map(([c, l]) => `<button class="sm ${L.bait === c ? 'sel' : ''}" data-a="bait" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div></div>`; };
+ <div class="row"><span class="mut chiplab">Bait</span>${onlyActive(BAITS).map(([c, l]) => `<button class="sm ${L.bait === c ? 'sel' : ''}" data-a="bait" data-u="${u}" data-v="${c}">${l}</button>`).join('')}</div></div>`; };
   return `<h1>Begin crabbing</h1>${ACTION_BAR(`<button class="p big" data-a="beginCrabbing" ${D.area_id && anyUse ? '' : 'disabled'}>Begin crabbing</button> <button class="big" data-a="sameAsLast">Same as last time</button> <button data-a="go" data-s="hub">Cancel</button>`)}
  <h2>Area</h2><div class="row">${areas.map(a => `<button class="${D.area_id === a.area_id ? 'sel' : ''}" data-a="areaPick" data-id="${a.area_id}">${esc(a.name)}</button>`).join('')}<button class="sm" data-a="addArea">+ Add new area</button></div>
  ${D.area_id ? `<div class="row"><span class="mut chiplab">Tide station</span>${STATIONS.map(([c, l]) => `<button class="sm ${stId === c ? 'sel' : ''}" data-a="drStation" data-v="${c}">${l}</button>`).join('')}</div>${stId ? '' : '<div class="warn">No tide station chosen for this area, so tides will not fill in. Pick one (it is remembered for this area).</div>'}` : ''}
@@ -115,7 +116,7 @@ async function prefill(L, spotId) {
   if (sp && sp.usual_heading_deg != null) { L.deg = sp.usual_heading_deg; L.dir = nearest(sp.usual_heading_deg); L.auto = true; } else if (L.auto) { L.dir = null; L.deg = null; L.auto = false; }
 }
 Object.assign(ACT, {
-  go(e) { go(e.dataset.s); },
+  go(e) { go(e.dataset.s, e.dataset.finish ? { onlyFinish: true } : undefined); },
   closeM() { closeModal(); },
   async startTrip() {
     const trips = live(await getAll('trips')).filter(t => t.engine_hours_end != null).sort((a, b) => a.trip_id < b.trip_id ? 1 : -1);
@@ -285,7 +286,7 @@ SCREENS.hub = async () => {
 Object.assign(ACT, {
   eventOpen() {
     S.evType = null;
-    modal(`<h2>Event</h2><div class="row" id="evt">${EVTYPES.map(([c, l]) => `<button data-a="evType" data-v="${c}">${l}</button>`).join('')}</div><label>Note (optional)</label><input type="text" id="evn" enterkeyhint="done">
+    modal(`<h2>Event</h2><div class="row" id="evt">${onlyActive(EVTYPES).map(([c, l]) => `<button data-a="evType" data-v="${c}">${l}</button>`).join('')}</div><label>Note (optional)</label><input type="text" id="evn" enterkeyhint="done">
      <div class="row" style="margin-top:8px"><button class="p big" data-a="eventStart">Start event</button><button data-a="closeM">Cancel</button></div>`);
   },
   evType(e) { S.evType = e.dataset.v; document.querySelectorAll('#evt button').forEach(b => b.classList.toggle('sel', b.dataset.v === S.evType)); },
@@ -535,7 +536,7 @@ SCREENS.spots = async () => {
   const shown = areas.map(a => ({ a, ls: locs.filter(l => l.area_id === a.area_id && (!f || l.needs_review)).sort(bySpot) })).filter(x => !f || x.ls.length);
   return `<h1>Areas &amp; spots</h1>${ACTION_BAR('<button data-a="go" data-s="home">Home</button>')}<button class="sm" data-a="addArea">+ Add new area</button> <button class="sm ${f ? 'sel' : ''}" data-a="toggleFinish">To finish: ${f ? 'ON' : 'OFF'}</button>`
     + shown.map(({ a, ls }) => `<div class="card"><b>${esc(a.name)}</b>${a.active === false ? ' (retired)' : ''} <button class="sm" data-a="editArea" data-id="${a.area_id}">Edit</button>
-   ${ls.map(l => `<div class="row"><span>${esc(l.name)}${l.active === false ? ' (retired)' : ''}${l.needs_review ? ' <span class="mut">(to finish)</span>' : ''}${l.latitude != null ? ' 📍' : ''}${l.usual_heading_deg != null ? ' <span class="mut">' + l.usual_heading_deg + '°</span>' : ''}</span><button class="sm" data-a="editSpot" data-id="${l.location_id}">Edit</button>
+   ${ls.map(l => `<div class="row"><span>${esc(l.name)}${l.active === false ? ' (retired)' : ''}${l.merged_into ? ' <span class="mut">(merged)</span>' : ''}${(l.aliases || []).length ? ' <span class="mut">also: ' + esc(l.aliases.join(', ')) + '</span>' : ''}${l.needs_review ? ' <span class="mut">(to finish)</span>' : ''}${l.latitude != null ? ' 📍' : ''}${l.usual_heading_deg != null ? ' <span class="mut">' + l.usual_heading_deg + '°</span>' : ''}</span><button class="sm" data-a="editSpot" data-id="${l.location_id}">Edit</button>
    ${l.latitude != null ? `<a href="https://www.google.com/maps?q=${l.latitude},${l.longitude}&z=17&t=k" target="_blank" rel="noopener">map</a>` : ''}</div>`).join('')}</div>`).join('') + `<!--ACT--><!--/ACT-->`;
 };
 function areaDialog(rec, cb) {
