@@ -62,7 +62,7 @@ const mb = b => b == null ? 'unknown' : (b / 1048576).toFixed(1) + ' MB';
 SCREENS.settings = async () => {
   const slack = await metaGet('slack_window_min', 30), sp = await metaGet('default_trap_spacing_ft', 59), pl = !!(await metaGet('count_per_line_default', false)), zip = await metaGet('home_zip', ''),
     st = await storageInfo(), lb = await metaGet('last_backup_at'), merges = await metaGet('spot_merges', []),
-    nFinish = live(await getAll('locations')).filter(l => l.needs_review && l.active !== false).length;
+    xfUrl = await metaGet('xfer_url'), xfKey = await metaGet('xfer_key'), nFinish = live(await getAll('locations')).filter(l => l.needs_review && l.active !== false).length;
   return `<h1>Settings</h1>${ACTION_BAR('<button data-a="go" data-s="home">Home</button>')}
  <div class="card"><b>Defaults</b>
   <div class="row"><span>Slack window around a tide: <b>${slack} min</b></span><button class="sm" data-a="setSlack">Change</button></div>
@@ -71,6 +71,10 @@ SCREENS.settings = async () => {
   <div class="row"><span>Home ZIP code: <b>${esc(zip) || 'not set'}</b></span><button class="sm" data-a="setZip">Change</button></div>
   <p class="mut">The home ZIP is stored for future location-based calculations. The moon is calculated from the date and does not need it.</p></div>
  <div class="card"><b>Units (fixed)</b><br><span class="mut">Wind mph · temperatures °F · lengths and depths ft · dates YYYY-MM-DD · times 24-hour · time zone America/New_York. These are fixed so every season stays comparable; nothing is converted silently.</span></div>
+ <div class="card"><b>Data Transfer (Google Sheet)</b><br><span class="mut">Sends finished trips straight into the CrabMaster_Data Google Sheet. Optional: Export still works without it.</span>
+  <div class="row"><span>Web address: <b>${xfUrl ? 'set' : 'not set'}</b></span><button class="sm" data-a="xfSetUrl">${xfUrl ? 'Change' : 'Set'}</button></div>
+  <div class="row"><span>Key: <b>${xfKey ? 'created' : 'not created'}</b></span><button class="sm" data-a="xfKey">${xfKey ? 'Show / copy' : 'Create key'}</button></div>
+  <button class="sm" data-a="xfTest" ${xfUrl && xfKey ? '' : 'disabled'}>Test connection</button> <span id="xftest" class="mut"></span></div>
  <div class="card"><b>Lists</b><br><button class="big" data-a="go" data-s="lists">Edit gear, bait and event lists</button></div>
  <div class="card"><b>Spots</b><br><button class="big" data-a="go" data-s="spots" data-finish="1">To finish list (${nFinish})</button> <button class="big" data-a="mergeOpen">Merge two spots…</button>
   ${merges.length ? `<h2>Merge history</h2>${merges.slice().reverse().map(m => `<div class="row"><span>${m.at.slice(0, 16)}: ${esc(m.from_name)} → ${esc(m.to_name)} (${m.deployment_ids.length} lines)${m.undone_at ? ' <span class="mut">undone</span>' : ''}</span>${m.undone_at ? '' : `<button class="sm" data-a="mergeUndo" data-id="${m.id}">Undo</button>`}</div>`).join('')}` : ''}</div>

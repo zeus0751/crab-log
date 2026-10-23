@@ -83,6 +83,7 @@ async function nextFuelId(dateStr) {
 /* ---- backup and restore ---- */
 async function makeBackup() {
   const data = {}; for (const s of Object.keys(STORES)) data[s] = await getAll(s);
+  data.meta = data.meta.filter(r => !String(r.key).startsWith('xfer_url') && r.key !== 'xfer_key'); /* the transfer key never goes into a backup file */
   const d = new Date(), name = `crabmetrics-backup-${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
   const counts = Object.fromEntries(Object.keys(data).map(s => [s, data[s].length]));
   return { name, counts, blob: new Blob([JSON.stringify({ app: 'crabmetrics', version: self.APP_VERSION, schema: self.SCHEMA_VERSION, created: now(), counts, data }, null, 1)], { type: 'application/json' }) };

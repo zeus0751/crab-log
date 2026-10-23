@@ -45,6 +45,7 @@ SCREENS.home = async () => {
  ${!areas.length ? `<div class="warn">No areas yet. Go to <b>Data &amp; backup → Restore from file</b> to load your spot list, or add an area under <b>Areas &amp; spots</b>.</div>` : ''}
  <button class="p big" data-a="startTrip" ${t ? 'disabled' : ''}>Start trip</button>
  <button class="big" data-a="go" data-s="history">History</button>
+ <button class="big" data-a="go" data-s="transfer">Data Transfer</button>
  <button class="big" data-a="go" data-s="data">Data &amp; backup</button>
  <button class="big" data-a="go" data-s="spots">Areas &amp; spots</button>
  <button class="big" data-a="go" data-s="settings">Settings</button>
@@ -488,7 +489,7 @@ Object.assign(ACT, {
   }
 });
 SCREENS.done = async () => `<h1>Trip ${S.tripId} complete ✔</h1><p>Saved on this tablet. Save a backup now so the trip is also stored outside the tablet.</p>
- <button class="p big" data-a="backup">Backup now</button> <button class="big" data-a="go" data-s="home">Home</button><div id="msg" class="warn" style="display:none"></div>`;
+ <button class="p big" data-a="backup">Backup now</button> <button class="big" data-a="go" data-s="transfer">Data Transfer</button> <button class="big" data-a="go" data-s="home">Home</button><div id="msg" class="warn" style="display:none"></div>`;
 
 /* ================= DATA & BACKUP ================= */
 let shareFile = null;
