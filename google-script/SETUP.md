@@ -1,6 +1,6 @@
 ---
 title: "CrabMetrics Data Transfer: Setup Guide"
-subtitle: "Google Sheet + Apps Script, script version 1.1 (app 1.0.0-g1)"
+subtitle: "Google Sheet + Apps Script, script version 1.1 (app 1.0.0.00 and later)"
 date: "October 23, 2026"
 ---
 
