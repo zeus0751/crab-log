@@ -489,7 +489,7 @@ Object.assign(ACT, {
     S.fin = null; go('done', { tripId: t.trip_id });
   }
 });
-SCREENS.done = async () => { const ls = await tripLoops(S.tripId), tt = await getOne('trips', S.tripId), tl = tripKeepers(tt, ls), sm = k => ls.some(l => l[k] != null) ? ls.reduce((a, l) => a + (l[k] || 0), 0) : '—'; return `<h1>Trip ${S.tripId} complete ✔</h1><p><b>Final total crabs <span class="crab big">${tl ?? '—'}</span></b> · Large <span class="crab">${sm('large_count')}</span> · Medium <span class="crab">${sm('medium_count')}</span> · Loops ${ls.length}</p><p>Saved on this tablet. Save a backup now so the trip is also stored outside the tablet.</p>
+SCREENS.done = async () => { const ls = await tripLoops(S.tripId), tt = await getOne('trips', S.tripId), tl = tripKeepers(tt, ls), sm = k => ls.some(l => l[k] != null) ? ls.reduce((a, l) => a + (l[k] || 0), 0) : '—'; return `<h1>Trip ${S.tripId} complete ✔</h1><p><b>Final total crabs <span class="crab big">${tl ?? '—'}</span></b> · Large <span class="crab">${sm('large_count')}</span> · Medium <span class="crab">${sm('medium_count')}</span> · Loops ${ls.length}</p><p><button class="p big" data-a="report" data-back="done">Trip summary</button></p><p>Saved on this tablet. Save a backup now so the trip is also stored outside the tablet.</p>
  <button class="p big" data-a="backup">Backup now</button> <button class="big" data-a="go" data-s="transfer">Data Transfer</button> <button class="big" data-a="go" data-s="home">Home</button><div id="msg" class="warn" style="display:none"></div>`; };
 
 /* ================= DATA & BACKUP ================= */

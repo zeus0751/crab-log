@@ -60,3 +60,5 @@ label{display:block;font-weight:700;margin-top:8px;font-size:19px}
 .dgc .dg-p .pad button{font-size:24px;padding:4px}
 
 .crab{color:#C00000;font-weight:800}.crab.big{font-size:1.25em}
+
+@media print{#bar,#saved,.topbar,.botbar,button,#ver{display:none!important}body{background:#fff}#app{padding:0;margin:0}.card{break-inside:avoid}}
