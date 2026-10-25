@@ -6,7 +6,7 @@
  * Actions: ping, plan (preview, changes nothing), commit (writes), read (for the app's own verification).
  */
 const SECRET = 'PASTE-YOUR-KEY-HERE';          // must equal the key shown in CrabMetrics > Settings > Data Transfer
-const SCRIPT_VERSION = '1.1';
+const SCRIPT_VERSION = '1.2';
 const SHEETS = {
   Trips: {
     key: 'trip_id',
@@ -127,7 +127,12 @@ function commit(trips) {
     }
     for (const id of it.loops.removed) { const blank = {}; Object.keys(L.rows[L.byKey[id]]).forEach(k => blank[k] = null); work.push({ S: L, i: L.byKey[id], obj: blank }); }
   }
-  for (const w of work) { const f = w.S.sh.getRange(w.i + 2, w.S.col[w.S.def.probe] + 1).getFormula(); if (!f) throw new Error(w.S.name + ' row ' + (w.i + 2) + ' has no formulas. Extend the formulas down first. Nothing was changed.'); }
+  for (const w of work) {   // every formula column in the target row must still hold its formula
+    for (const h of w.S.def.formula) {
+      if (w.S.col[h] === undefined) continue;
+      if (!w.S.sh.getRange(w.i + 2, w.S.col[h] + 1).getFormula()) throw new Error(w.S.name + ' row ' + (w.i + 2) + ' is missing the formula in column ' + h + '. Copy the formulas down from a good row first. Nothing was changed.');
+    }
+  }
   for (const w of work) writeRow(w.S, w.i + 2, w.obj);
   SpreadsheetApp.flush();
   return { summary: P.summary };

@@ -265,7 +265,7 @@ SCREENS.hub = async () => {
     : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="tidesOpen">Tides</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
   h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · ${v ? 'Crabbing at: ' + esc(await areaName(v.area_id)) : 'Not crabbing now'} · Loops: ${loops.length}<br>
    <b>Total crabs <span class="crab big">${tot == null ? '—' : tot}</span></b> · Large <span class="crab">${lrg ?? '—'}</span> · Medium <span class="crab">${med ?? '—'}</span> <span class="mut">(calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
-   <span class="mut">Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
+   <span class="mut">Count each line separately: <b>${t.count_per_line ? 'ON' : 'OFF'}</b></span> <button class="sm" data-a="togglePerLine">${t.count_per_line ? 'Turn off' : 'Turn on'}</button></div>`;
   h += `<div class="card"><b>Tides</b> <span class="mut">(${tides.length ? stationName(tides[0].station) : 'none stored'})</span>: ${tides.length ? tides.map(x => (x.tide_type === 'HIGH' ? 'High ' : 'Low ') + tsTime(x.tide_time) + (x.basis === 'PREDICTED' ? '' : '*')).join(' · ') : '—'}<br>
    <b>Tide now: ${PHASE_LABEL[tidePhase(new Date(), tdates, sl)]}</b> <span class="mut">(calculated, slack = within ${sl} min of a tide)</span><br><b>Moon ${moon ? moon.value_num : moonInfo(tideDate(t.depart_ts)).illum}%</b> ${esc(moon ? moon.value_text || '' : moonInfo(tideDate(t.depart_ts)).name)} <span class="mut">(lit, at departure; calculated, approximate)</span>
    ${tide2 && loops.length ? `<br><span class="mut">Crabs before the tide change (${tsTime(mkTs(tide2.date))}): ${before} · after: ${after} (calculated)</span>` : ''}
@@ -285,6 +285,7 @@ SCREENS.hub = async () => {
   return h;
 };
 Object.assign(ACT, {
+  async togglePerLine() { const t = await currentTrip(); await put('trips', { trip_id: t.trip_id, count_per_line: !t.count_per_line }); render(); },
   eventOpen() {
     S.evType = null;
     modal(`<h2>Event</h2><div class="row" id="evt">${onlyActive(EVTYPES).map(([c, l]) => `<button data-a="evType" data-v="${c}">${l}</button>`).join('')}</div><label>Note (optional)</label><input type="text" id="evn" enterkeyhint="done">
