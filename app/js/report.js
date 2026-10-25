@@ -37,30 +37,34 @@ function tripReport(trip, loops, visits, events, tides, slack, nowDate) {
   const crabMin = Math.round(iv.reduce((a, [s, f]) => a + (f - s), 0) / MIN);
   const R = { total, large: sum('large_count'), medium: sum('medium_count'), loops: loops.length, counted: counted.length,
     avgLoop: counted.length ? total / counted.length : null, crabMin, evMin, perHour: crabMin > 0 && total != null ? total / (crabMin / 60) : null, groups: [], note: '' };
-  const T = tides.filter(x => x.date).sort((a, b) => a.date - b.date), sl = slack * MIN;
-  const group = (label, test, lo, hi) => {
-    const ls = counted.filter(l => test(+tsToDate(l.start_ts))), c = ls.reduce((a, l) => a + cnt(l), 0), m = overlapMin(iv, lo, hi);
-    return { label, loops: ls.length, crabs: ls.length ? c : 0, avg: ls.length ? c / ls.length : null, min: Math.round(m), perHour: m > 0 && ls.length ? c / (m / 60) : null };
-  };
-  const INF = 8.64e15;
-  if (!T.length) { R.groups.push(group('Unknown (no tide times entered)', () => true, -INF, INF)); return R; }
-  const inSpan = T.filter(x => x.date >= dep && x.date <= end);
-  if (inSpan.length) {
-    const C = inSpan[0], c = +C.date, rising = C.type === 'LOW', // LOW tide then rising; HIGH tide then falling
-      bl = C.type === 'HIGH' ? 'Incoming' : 'Outgoing', al = C.type === 'HIGH' ? 'Outgoing' : 'Incoming';
-    R.groups.push(group(`Before change (${bl})`, t => t < c - sl, -INF, c - sl), group('Slack', t => t >= c - sl && t <= c + sl, c - sl, c + sl), group(`After change (${al})`, t => t > c + sl, c + sl, INF));
-    R.change = `${C.type === 'HIGH' ? 'High' : 'Low'} tide at ${String(C.date.getHours()).padStart(2, '0')}:${String(C.date.getMinutes()).padStart(2, '0')}, slack window ±${slack} min`;
-    if (inSpan.length > 1) R.note = `This trip has ${inSpan.length} tide changes; the report splits at the first one only.`;
-    return R;
+  const cl = tideClassifier(trip, tides, slack, end), INF = 8.64e15;
+  for (const g of cl.groups) {
+    const ls = counted.filter(l => cl.keyOf(+tsToDate(l.start_ts)) === g.key), c = ls.reduce((a, l) => a + cnt(l), 0), m = overlapMin(iv, g.lo, g.hi);
+    R.groups.push({ label: g.label, loops: ls.length, crabs: ls.length ? c : 0, avg: ls.length ? c / ls.length : null, min: Math.round(m), perHour: m > 0 && ls.length ? c / (m / 60) : null });
   }
-  /* no tide change during the trip: whole trip is one tide (or slack if near a tide just outside the trip) */
-  const mid = +dep + (+end - +dep) / 2, prev = [...T].reverse().find(x => +x.date <= mid), next = T.find(x => +x.date > mid);
-  const near = T.some(x => Math.abs(+x.date - +dep) <= sl || Math.abs(+x.date - +end) <= sl);
-  let lab = prev ? (prev.type === 'HIGH' ? 'Outgoing' : 'Incoming') : next ? (next.type === 'HIGH' ? 'Incoming' : 'Outgoing') : 'Unknown';
-  R.groups.push(group(`${lab} (no tide change during the trip)`, () => true, -INF, INF));
-  if (near) R.note = 'A tide change falls within the slack window just outside the trip times.';
+  R.change = cl.change; R.note = cl.note;
   return R;
 }
+
+/* Which tide group a loop (by start time, ms) belongs to. Used by the report and by the master (tide_phase). */
+function tideClassifier(trip, tides, slack, end) {
+  const INF = 8.64e15, dep = tsToDate(trip.depart_ts), T = tides.filter(x => x.date).sort((a, b) => a.date - b.date), sl = slack * MIN;
+  if (!T.length) return { groups: [{ key: 'UNKNOWN', label: 'Unknown (no tide times entered)', lo: -INF, hi: INF }], keyOf: () => 'UNKNOWN', change: '', note: '' };
+  const inSpan = T.filter(x => x.date >= dep && x.date <= end);
+  if (inSpan.length) {
+    const C = inSpan[0], c = +C.date, bl = C.type === 'HIGH' ? 'Incoming' : 'Outgoing', al = C.type === 'HIGH' ? 'Outgoing' : 'Incoming';
+    return { groups: [{ key: 'BEFORE', label: `Before change (${bl})`, lo: -INF, hi: c - sl }, { key: 'SLACK', label: 'Slack', lo: c - sl, hi: c + sl }, { key: 'AFTER', label: `After change (${al})`, lo: c + sl, hi: INF }],
+      keyOf: t => t < c - sl ? 'BEFORE' : t <= c + sl ? 'SLACK' : 'AFTER',
+      change: `${C.type === 'HIGH' ? 'High' : 'Low'} tide at ${String(C.date.getHours()).padStart(2, '0')}:${String(C.date.getMinutes()).padStart(2, '0')}, slack window ±${slack} min`,
+      note: inSpan.length > 1 ? `This trip has ${inSpan.length} tide changes; the report splits at the first one only.` : '' };
+  }
+  const mid = +dep + (+end - +dep) / 2, prev = [...T].reverse().find(x => +x.date <= mid), next = T.find(x => +x.date > mid);
+  const near = T.some(x => Math.abs(+x.date - +dep) <= sl || Math.abs(+x.date - +end) <= sl);
+  const lab = prev ? (prev.type === 'HIGH' ? 'Outgoing' : 'Incoming') : next ? (next.type === 'HIGH' ? 'Incoming' : 'Outgoing') : 'Unknown';
+  return { groups: [{ key: lab.toUpperCase(), label: `${lab} (no tide change during the trip)`, lo: -INF, hi: INF }], keyOf: () => lab.toUpperCase(), change: '',
+    note: near ? 'A tide change falls within the slack window just outside the trip times.' : '' };
+}
+const TIDE_KEY_TEXT = { BEFORE: 'Before change', SLACK: 'Slack', AFTER: 'After change', INCOMING: 'Incoming', OUTGOING: 'Outgoing', UNKNOWN: 'Unknown' };
 
 const f1 = x => x == null ? '—' : (Math.round(x * 10) / 10).toFixed(1);
 const hm = m => m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;

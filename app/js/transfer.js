@@ -1,7 +1,7 @@
 'use strict';
 /* Data Transfer: sends trips to the CrabMaster_Data Google Sheet through the CrabMetrics Apps Script.
    Preview first, then write, then read back and compare before marking trips as sent. */
-const XF_FORMULA = { Trips: ['season', 'month', 'day_of_season', 'duration_hours', 'engine_hours_used', 'loops_recorded', 'keepers_from_loops', 'loops_minus_typed', 'keepers_per_hour', 'season_cumulative_keepers'], Loops: ['count_total'] };
+const XF_FORMULA = { Trips: ['season', 'month', 'day_of_season', 'duration_hours', 'engine_hours_used', 'loops_recorded', 'keepers_from_loops', 'loops_minus_typed', 'keepers_per_hour', 'season_cumulative_keepers', 'large_total', 'medium_total'], Loops: ['count_total'] };
 const xfObj = (cols, arr) => Object.fromEntries(cols.map((c, i) => [c, arr[i] ?? null]));
 function xfNorm(v) {
   if (v === null || v === undefined) return '';

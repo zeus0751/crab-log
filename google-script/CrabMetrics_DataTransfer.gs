@@ -6,11 +6,11 @@
  * Actions: ping, plan (preview, changes nothing), commit (writes), read (for the app's own verification).
  */
 const SECRET = 'PASTE-YOUR-KEY-HERE';          // must equal the key shown in CrabMetrics > Settings > Data Transfer
-const SCRIPT_VERSION = '1.2';
+const SCRIPT_VERSION = '1.3';
 const SHEETS = {
   Trips: {
     key: 'trip_id',
-    formula: ['season', 'month', 'day_of_season', 'duration_hours', 'engine_hours_used', 'loops_recorded', 'keepers_from_loops', 'loops_minus_typed', 'keepers_per_hour', 'season_cumulative_keepers'],
+    formula: ['season', 'month', 'day_of_season', 'duration_hours', 'engine_hours_used', 'loops_recorded', 'keepers_from_loops', 'loops_minus_typed', 'keepers_per_hour', 'season_cumulative_keepers', 'large_total', 'medium_total'],
     date: ['trip_date'], time: ['depart_time', 'return_time', 'tide1_time', 'tide2_time', 'tide3_time'],
     num: ['engine_hours_start', 'engine_hours_end', 'passengers', 'air_temp_f', 'water_temp_f', 'depth_min_ft', 'depth_max_ft', 'moon_pct', 'line_count', 'line_length_ft', 'trap_count', 'keepers_typed', 'male_typed', 'female_typed'],
     numFmt: { depth_min_ft: '0.0', depth_max_ft: '0.0' },   // one decimal, like the earlier entries
