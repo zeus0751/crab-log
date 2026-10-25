@@ -58,3 +58,5 @@ label{display:block;font-weight:700;margin-top:8px;font-size:19px}
 @media (max-aspect-ratio:1/1){.dgc{grid-template-columns:1fr minmax(190px,240px)}}
 .dgc .fld{height:84px}
 .dgc .dg-p .pad button{font-size:24px;padding:4px}
+
+.crab{color:#C00000;font-weight:800}.crab.big{font-size:1.25em}

@@ -264,7 +264,7 @@ SCREENS.hub = async () => {
     ? `<button class="p big" data-a="loopStart">Start loop #${loops.length ? loops[loops.length - 1].seq + 1 : 1}</button> <button class="big" data-a="loopStart" data-type="PICKUP_FINAL">Pick-up loop</button> <button class="big" data-a="go" data-s="move">Move lines</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="tidesOpen">Tides</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="finishCrabbing">Finish crabbing</button> <button data-a="go" data-s="home">Home</button>`
     : `<button class="p big" data-a="crabStart">Begin crabbing</button> <button class="big" data-a="eventOpen">Event</button> <button class="big" data-a="tidesOpen">Tides</button> <button class="big" data-a="condOpen">Conditions</button> <button class="big" data-a="noteOpen">Note</button> <button class="big" data-a="go" data-s="finish">Finish trip</button> <button data-a="go" data-s="home">Home</button>`);
   h += `<div class="card"><b>Trip time <span id="ttime">${fmtMin(minutesBetween(t.depart_ts, now()))}</span></b> · ${v ? 'Crabbing at: ' + esc(await areaName(v.area_id)) : 'Not crabbing now'} · Loops: ${loops.length}<br>
-   <b>Total crabs ${tot == null ? '—' : tot}</b> <span class="mut">(Medium ${med ?? '—'} · Large ${lrg ?? '—'} · calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
+   <b>Total crabs <span class="crab big">${tot == null ? '—' : tot}</span></b> · Large <span class="crab">${lrg ?? '—'}</span> · Medium <span class="crab">${med ?? '—'}</span> <span class="mut">(calculated)</span>${tot != null && crabMin >= 5 ? `<br><b>${(tot / (crabMin / 60)).toFixed(1)} crabs per crabbing hour</b> <span class="mut">(calculated; crabbing time ${fmtMin(crabMin)})</span>` : ''}<br>
    <span class="mut">Count each line separately: ${t.count_per_line ? 'ON' : 'OFF'}</span></div>`;
   h += `<div class="card"><b>Tides</b> <span class="mut">(${tides.length ? stationName(tides[0].station) : 'none stored'})</span>: ${tides.length ? tides.map(x => (x.tide_type === 'HIGH' ? 'High ' : 'Low ') + tsTime(x.tide_time) + (x.basis === 'PREDICTED' ? '' : '*')).join(' · ') : '—'}<br>
    <b>Tide now: ${PHASE_LABEL[tidePhase(new Date(), tdates, sl)]}</b> <span class="mut">(calculated, slack = within ${sl} min of a tide)</span><br><b>Moon ${moon ? moon.value_num : moonInfo(tideDate(t.depart_ts)).illum}%</b> ${esc(moon ? moon.value_text || '' : moonInfo(tideDate(t.depart_ts)).name)} <span class="mut">(lit, at departure; calculated, approximate)</span>
@@ -278,7 +278,7 @@ SCREENS.hub = async () => {
      ${lp ? `<div class="mut">Calculated end (${ft} ft, approximate): ${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}${lp.uncertain ? ' (±22° compass-point uncertainty)' : ''}</div>` : `<div class="mut">No spot coordinates or direction yet, so no line path.</div>`}</div>`;
   }
   if (t.trip_notes) h += `<div class="card"><b>Notes</b><br>${esc(t.trip_notes)}</div>`;
-  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Type</th><th>Time</th><th>Tide</th><th>Medium</th><th>Large</th><th></th></tr>` + loops.map((l, i) => `<tr><td>${l.seq}</td><td>${({ RUN: 'Run', PICKUP_MOVE: 'Pick-up (moving)', PICKUP_FINAL: 'Pick-up (final)' })[l.loop_type] || ''}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${PHASE_LABEL[tidePhase(tideDate(l.start_ts), tdates, sl)]}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.medium_count ?? '—'}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.large_count ?? '—'}</td><td><button class="sm" data-a="editLoop" data-id="${l.loop_id}">${l.count_status === 'NOT_COUNTED' ? 'Count' : 'Edit'}</button>${i === loops.length - 1 ? ' <button class="sm danger" data-a="undoLoop" data-id="' + l.loop_id + '">Undo</button>' : ''}</td></tr>`).join('') + `</table>`;
+  if (loops.length) h += `<h2>Loops so far</h2><table><tr><th>#</th><th>Type</th><th>Time</th><th>Tide</th><th>Large</th><th>Medium</th><th></th></tr>` + loops.map((l, i) => `<tr><td>${l.seq}</td><td>${({ RUN: 'Run', PICKUP_MOVE: 'Pick-up (moving)', PICKUP_FINAL: 'Pick-up (final)' })[l.loop_type] || ''}</td><td>${tsTime(l.end_ts || l.start_ts)}</td><td>${PHASE_LABEL[tidePhase(tideDate(l.start_ts), tdates, sl)]}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.large_count ?? '—'}</td><td>${l.count_status === 'NOT_COUNTED' ? 'not counted' : l.medium_count ?? '—'}</td><td><button class="sm" data-a="editLoop" data-id="${l.loop_id}">${l.count_status === 'NOT_COUNTED' ? 'Count' : 'Edit'}</button>${i === loops.length - 1 ? ' <button class="sm danger" data-a="undoLoop" data-id="' + l.loop_id + '">Undo</button>' : ''}</td></tr>`).join('') + `</table>`;
   const done = evs.filter(e => e.end_ts);
   if (done.length) h += `<h2>Events</h2>` + done.map(e => `<div class="mut">${evLabel(e.event_type)} ${tsTime(e.start_ts)}–${tsTime(e.end_ts)} (${fmtMin(minutesBetween(e.start_ts, e.end_ts))})${e.note ? ' — ' + esc(e.note) : ''}</div>`).join('');
   S.afterRender = () => { clearInterval(S.tt); S.tt = setInterval(() => { const e = document.getElementById('ttime'); if (!e) { clearInterval(S.tt); return; } e.textContent = fmtMin(minutesBetween(t.depart_ts, now())); }, 20000); };
@@ -306,7 +306,7 @@ const ltypeChips = () => `<div class="row"><span class="mut chiplab">Loop type</
 SCREENS.loopTimer = async () => `<h1>Loop ${S.loop.seq} running</h1><div class="tm" id="tm">0:00</div>${ltypeChips()}
  <p class="mut">Started ${tsTime(S.loop.start_ts)}. Tap when the lines are up and you are ready to count.</p>
  <button class="p big" data-a="linesUp">End of Loop Count</button> <button class="danger" data-a="loopCancel">Cancel loop</button>`;
-const countFields = units => units ? units.flatMap(u => [[u + '_M', `Line ${u} Medium`], [u + '_L', `Line ${u} Large`]]) : [['M', 'Medium'], ['L', 'Large']];
+const countFields = units => units ? units.flatMap(u => [[u + '_L', `Line ${u} Large`], [u + '_M', `Line ${u} Medium`]]) : [['L', 'Large'], ['M', 'Medium']];
 SCREENS.count = async () => {
   if (!PAD) PAD = new PadEngine(countFields(S.units).map(([k, l]) => ({ key: k, label: l, val: S.init && S.init[k] != null ? String(S.init[k]) : '', max: 3 })), paintCount);
   PAD.paint = paintCount;
@@ -314,7 +314,7 @@ SCREENS.count = async () => {
   return `<h1 style="margin:2px 0 6px">${S.edit ? 'Edit' : 'Count'} — loop ${S.loop.seq}</h1><div class="cnt"><div id="cf" class="g-f"></div><div class="g-p">${padHTML(false)}</div>
   <div class="g-b"><p class="mut" style="margin:0 0 4px">Empty = not counted. Typing 0 = counted zero.</p><button class="p big" data-a="saveLoop">Save loop</button> <button class="big" data-a="saveLoop" data-later="1">${S.edit ? 'Mark not counted' : 'Count later'}</button> <button class="big" data-a="backToHub">Back</button></div></div>`;
 };
-function paintCount() { const c = document.getElementById('cf'); if (!c || !PAD) return; c.innerHTML = `<div class="row">${fieldBoxes(PAD)}</div>` + ltypeChips() + (S.units ? `<p class="mut">Total: Medium ${sumF('_M')}, Large ${sumF('_L')}</p>` : ''); }
+function paintCount() { const c = document.getElementById('cf'); if (!c || !PAD) return; c.innerHTML = `<div class="row">${fieldBoxes(PAD)}</div>` + ltypeChips() + (S.units ? `<p class="mut">Total: Large <span class="crab">${sumF('_L')}</span>, Medium <span class="crab">${sumF('_M')}</span></p>` : ''); }
 function sumF(sfx) { let any = false, t = 0; PAD.fields.filter(f => f.key.endsWith(sfx)).forEach(f => { if (f.val !== '') { any = true; t += +f.val; } }); return any ? t : '—'; }
 Object.assign(ACT, {
   async loopStart(e) {
@@ -443,7 +443,7 @@ SCREENS.finish = async () => {
   const warns = []; if (await openVisit(t.trip_id)) warns.push('You did not tap Finish crabbing; lines will be closed at the return time'); if (nc) warns.push(`${nc} loop${nc > 1 ? 's have' : ' has'} no count`);
   return `<h1>Finish trip ${t.trip_id}</h1>
  <div class="row"><div class="fld sm wide" data-a="finField" data-k="ret"><b>Return time (edit)</b><span>${tsDate(F.ret)} ${tsTime(F.ret)}</span></div>${b('eng', 'Engine hours end', F.eng, t.engine_hours_start != null ? 'start ' + t.engine_hours_start : '')}</div>
- <div class="card"><b>Totals (calculated)</b> Loops ${loops.length} · Medium ${sum('medium_count')} · Large ${sum('large_count')} · Trip time ${fmtMin(minutesBetween(t.depart_ts, F.ret))}
+ <div class="card"><b>Totals (calculated)</b> Loops ${loops.length} · <b>Total crabs <span class="crab big">${(sum('medium_count') === '—' && sum('large_count') === '—') ? '—' : (sum('medium_count') === '—' ? 0 : sum('medium_count')) + (sum('large_count') === '—' ? 0 : sum('large_count'))}</span></b> · Large <span class="crab">${sum('large_count')}</span> · Medium <span class="crab">${sum('medium_count')}</span> · Trip time ${fmtMin(minutesBetween(t.depart_ts, F.ret))}
   ${warns.length ? `<div class="warn">⚠ ${warns.join(' · ')}</div>` : ''}<button class="sm" data-a="reviewBlanks">Review blanks</button> ${Object.keys(F.blanks).length ? `<span class="mut">${Object.keys(F.blanks).length} marked</span>` : ''}</div>
  <h2>Fuel (optional)</h2><div class="row">${b('gal', 'Gallons', F.gal)}${b('ppg', 'Price per gallon', F.ppg, '$')}${b('tot', 'Total cost', F.tot, '$')}</div>
  <input type="text" id="fvendor" placeholder="Fuel vendor (optional)" enterkeyhint="done" value="${esc(F.vendor)}" style="margin:6px 0">
@@ -488,8 +488,8 @@ Object.assign(ACT, {
     S.fin = null; go('done', { tripId: t.trip_id });
   }
 });
-SCREENS.done = async () => `<h1>Trip ${S.tripId} complete ✔</h1><p>Saved on this tablet. Save a backup now so the trip is also stored outside the tablet.</p>
- <button class="p big" data-a="backup">Backup now</button> <button class="big" data-a="go" data-s="transfer">Data Transfer</button> <button class="big" data-a="go" data-s="home">Home</button><div id="msg" class="warn" style="display:none"></div>`;
+SCREENS.done = async () => { const ls = await tripLoops(S.tripId), tt = await getOne('trips', S.tripId), tl = tripKeepers(tt, ls), sm = k => ls.some(l => l[k] != null) ? ls.reduce((a, l) => a + (l[k] || 0), 0) : '—'; return `<h1>Trip ${S.tripId} complete ✔</h1><p><b>Final total crabs <span class="crab big">${tl ?? '—'}</span></b> · Large <span class="crab">${sm('large_count')}</span> · Medium <span class="crab">${sm('medium_count')}</span> · Loops ${ls.length}</p><p>Saved on this tablet. Save a backup now so the trip is also stored outside the tablet.</p>
+ <button class="p big" data-a="backup">Backup now</button> <button class="big" data-a="go" data-s="transfer">Data Transfer</button> <button class="big" data-a="go" data-s="home">Home</button><div id="msg" class="warn" style="display:none"></div>`; };
 
 /* ================= DATA & BACKUP ================= */
 let shareFile = null;
